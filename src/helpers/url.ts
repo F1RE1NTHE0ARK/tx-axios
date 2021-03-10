@@ -1,5 +1,5 @@
 // 引入工具函数
-import { isDate, isObject } from './util'
+import { isDate, isPlainObject } from './util'
 
 // 转码url，将@:$,+[]等特殊字符转换为原来的字符
 function encode (val: string): string {
@@ -51,7 +51,7 @@ export function bulidURL (url: string, params?: any):string {
         //   转换为日期，参考url日期类型
         val = val.toISOString()
         // 如果是对象类型
-      } else if (isObject(val)) {
+      } else if (isPlainObject(val)) {
         //   转换为json字符串，参考url对象类型
         val = JSON.stringify(val)
       }

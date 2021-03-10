@@ -116,7 +116,7 @@ export default axios;
 
 参考手册
 
-## 处理url参数
+# 处理url参数
 
 - 在src下创建helpers文件夹，创建url.ts（返回处理后的url）和util.ts（保存一些公共方法，比如判断类型）
 
@@ -206,7 +206,7 @@ axios({
 ``` typescript
 //url.ts
 // 引入工具函数
-import { isDate, isObject } from './util'
+import { isDate, isPlainObject } from './util'
 
 // 转码url，将@:$,+[]等特殊字符转换为原来的字符
 function encode (val: string): string {
@@ -258,7 +258,7 @@ export function bulidURL (url: string, params?: any):string {
         //   转换为日期，参考url日期类型
         val = val.toISOString()
         // 如果是对象类型
-      } else if (isObject(val)) {
+      } else if (isPlainObject(val)) {
         //   转换为json字符串，参考url对象类型
         val = JSON.stringify(val)
       }
@@ -302,6 +302,10 @@ export function isObject (val: any): val is Object {
   return val !== null && typeof val === 'object'
 }
 
+// 判断是否为普通对象,因为formdata，ArrayBuffer等也是对象，但不是普通对象
+export function isPlainObject (val: any): val is Object {
+  return toString.call(val) === '[object Object]'
+}
 ```
 
 ## 改造之前的入口文件
@@ -333,3 +337,122 @@ export default axios
 ## 编写demo文件
 
 参考手册
+
+# 处理body参数
+
+我们通过执行 `XMLHttpRequest` 对象实例的 `send` 方法来发送请求，并通过该方法的参数设置请求 `body` 数据，我们可以去 [mdn](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/send) 查阅该方法支持的参数类型。
+
+我们发现 `send` 方法的参数支持 `Document` 和 `BodyInit` 类型，`BodyInit` 包括了 `Blob`, `BufferSource`, `FormData`, `URLSearchParams`, `ReadableStream`、`USVString`，当没有数据的时候，我们还可以传入 `null`。
+
+
+
+JSON字符串属于USVString
+
+
+
+- 在helpers下创建data.ts
+
+``` typescript
+import {isPlainObject} from './util'
+
+//处理body的data数据，如果是普通对象，则转换为JSON字符串
+export function transformRequest(data:any):any{
+    if(isPlainObject(data)){
+       return JSON.stringify(data)
+    }
+    return data;
+}
+```
+
+- src的index.ts下添加方法
+
+``` typescript
+import {transformRequest} from './helpers/data'
+...
+// 对config的data做处理
+function processConfig (config: AxiosRequestConfig): void {
+  config.url = transformURL(config)
+  config.data = transformRequestData(config)
+}
+// 对body做处理
+function transformRequestData (config: AxiosRequestConfig): any {
+  return transformRequest(config.data)
+}
+```
+
+## 编写demo文件
+
+参考文档
+
+# 处理header
+
+- 在helpers下创建headers.ts
+
+``` typescript
+import { isPlainObject } from './util'
+// 对content-type字符串进行大小写转换，规范化
+function normalizeHeaderName (headers: any, normalizedName: string): void {
+    // 如果没有headers，什么都不做
+  if (!headers) {
+    return
+  }
+  Object.keys(headers).forEach(name => {
+    // 如果原来的key值和规范化后的normalizedName期望值不同
+    // 并且两者全部大写后相等
+    if (name !== normalizedName && name.toUpperCase() === normalizedName.toUpperCase()) {
+        // 将原来的属性替换为规范化后的属性
+      headers[normalizedName] = headers[name]
+    //   删除原来的属性
+      delete headers[name]
+    }
+  })
+}
+
+export function processHeaders (headers: any, data: any): any {
+  normalizeHeaderName(headers, 'Content-Type')
+  
+  if (isPlainObject(data)) {
+    if (headers && !headers['Content-Type']) {
+        // 有header但没有设置content-type则默认
+      headers['Content-Type'] = 'application/json;charset=utf-8'
+    }
+  }
+  return headers
+}
+```
+
+- 改写入口文件
+
+``` typescript
+import {processHeaders} from './helpers/headers'
+...
+// 对config做处理
+function processConfig (config: AxiosRequestConfig): void {
+  config.url = transformUrl(config)
+  //先处理headers是因为处理data时会把普通对象转换为JSON字符串
+  config.headers = transformHeaders(config)
+  config.data = transformRequestData(config)
+}
+...
+function transformHeaders (config: AxiosRequestConfig) {
+  const { headers = {}, data } = config
+  return processHeaders(headers, data)
+}
+```
+
+- 修改xhr.ts
+
+``` typescript
+...
+request.open(method.toUpperCase(), url, true)
+Object.keys(headers).forEach((name) => {
+    // 如果没数据，则content-type没有意义
+    if (data === null && name.toLowerCase() === 'content-type') {
+      delete headers[name]
+    } else {
+      request.setRequestHeader(name, headers[name])
+    }
+  })
+request.send(data)
+```
+
