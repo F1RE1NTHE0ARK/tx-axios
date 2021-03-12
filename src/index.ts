@@ -1,13 +1,16 @@
-import { AxiosRequestConfig } from './types'
+import { AxiosRequestConfig,AxiosPromise  } from './types'
 import {bulidURL} from './helpers/url'
-import {transformRequest} from './helpers/data'
+import {transformRequest,transformResponse} from './helpers/data'
 import {processHeaders} from './helpers/headers'
 import xhr from './xhr'
 
 // 作为库的入口文件
-function axios(config: AxiosRequestConfig): void {
+function axios(config: AxiosRequestConfig): AxiosPromise {
   processConfig(config)
-  xhr(config)
+  // 返回一个promise对象
+  return xhr(config).then((res) => {
+    return transformResponseData(res)
+  })
 }
 // 对config做处理
 function processConfig (config: AxiosRequestConfig): void {
@@ -29,4 +32,9 @@ function transformHeaders (config: AxiosRequestConfig) {
   const { headers = {}, data } = config
   return processHeaders(headers, data)
 }
+function transformResponseData(res: AxiosResponse): AxiosResponse {
+  res.data = transformResponse(res.data)
+  return res
+}
+
 export default axios

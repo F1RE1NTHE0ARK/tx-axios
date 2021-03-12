@@ -456,3 +456,330 @@ Object.keys(headers).forEach((name) => {
 request.send(data)
 ```
 
+## 编写demo文件
+
+- base里的app.ts
+
+``` typescript
+axios({
+  method: 'post',
+  url: '/base/post',
+  data: {
+    a: 1,
+    b: 2
+  }
+})
+
+axios({
+  method: 'post',
+  url: '/base/post',
+  headers: {
+    'content-type': 'application/json;charset=utf8',
+    'Accept':'application/json,text/plain'
+  },
+  data: {
+    a: 1,
+    b: 2
+  }
+})
+
+const paramsString = 'q=URLUtils.searchParams&topic=api'
+const searchParams = new URLSearchParams(paramsString)
+
+axios({
+  method: 'post',
+  url: '/base/post',
+  data: searchParams
+})
+```
+
+# 获取响应数据
+
+我们已经可以在开发者里看到响应数据，现在要代码内拿到数据
+
+## 需求
+
+```typescript
+axios({
+  method: 'post',
+  url: '/base/post',
+  data: {
+    a: 1,
+    b: 2
+  }
+}).then((res) => {
+  //我们想要在这里拿到返回值
+  console.log(res)
+})
+```
+
+- 在type中index.ts中
+
+``` typescript
+...
+export interface AxiosRequestConfig {
+  ...
+  responseType?: XMLHttpRequestResponseType
+  // type XMLHttpRequestResponseType = "" | "arraybuffer" | "blob" | "document" | "json" | "text"
+  // 和请求数据类型类似
+}
+
+export interface AxiosResponse {
+  data: any
+  // http状态码
+  status: number
+  // 状态信息
+  statusText: string
+  headers: any
+  config: AxiosRequestConfig
+  request: any
+}
+
+export interface AxiosPromise extends Promise<AxiosResponse> {
+  // 这里Promise泛型接口是interface Promise<T>
+  // T代表resolve(T),即以后then(res=>...)中res的类型
+}
+```
+
+- 改造xhr.ts
+
+``` typescript
+import { AxiosRequestConfig , AxiosPromise,AxiosResponse} from './types'
+// 返回resolve值是AxiosResponse类型的Promise对象，
+export default function xhr(config: AxiosRequestConfig): AxiosPromise {
+  return new Promise((resolve) => {
+    const { data = null, url, method = 'get', headers, responseType } = config
+
+    const request = new XMLHttpRequest()
+
+    // 获取服务器返回值
+    if (responseType) {
+      request.responseType = responseType
+    }
+
+    request.open(method.toUpperCase(), url, true)
+
+    // 请求状态变化监听器
+    request.onreadystatechange = function handleLoad() {
+      // 0	UNSENT	代理被创建，但尚未调用 open() 方法。
+      // 1	OPENED	open() 方法已经被调用。
+      // 2	HEADERS_RECEIVED	send() 方法已经被调用，并且头部和状态已经可获得。
+      // 3	LOADING	下载中； responseText 属性已经包含部分数据。
+      // 4	DONE	下载操作已完成。
+      if (request.readyState !== 4) {
+        // 如果连接没完成则直接返回
+        return
+      }
+      // getAllResponseHeaders()方法返回所有的响应头
+      const responseHeaders = request.getAllResponseHeaders()
+      // 这个只是字段不同
+      const responseData = responseType && responseType !== 'text' ? request.response : request.responseText
+
+      // 最终返回数据
+      const response: AxiosResponse = {
+        data: responseData,
+        status: request.status,
+        statusText: request.statusText,
+        headers: responseHeaders,
+        config,
+        request
+      }
+      resolve(response)
+    }
+
+    Object.keys(headers).forEach((name) => {
+      if (data === null && name.toLowerCase() === 'content-type') {
+        delete headers[name]
+      } else {
+        request.setRequestHeader(name, headers[name])
+      }
+    })
+
+    request.send(data)
+  })
+}
+```
+
+- src下的index.ts
+
+``` typescript
+...
+// 作为库的入口文件
+function axios(config: AxiosRequestConfig): AxiosPromise {
+  processConfig(config)
+  // 返回一个promise对象
+  return xhr(config)
+}
+...
+```
+
+## 编写demo文件
+
+# 处理响应header
+
+## 需求
+
+```json
+//原先
+'date: Fri, 05 Apr 2019 12:40:49 GMT /r/n etag: W/"d-Ssxx4FRxEutDLwo2+xkkxKc4y0k" /r/n connect...'
+//输出
+{
+  date: 'Fri, 05 Apr 2019 12:40:49 GMT'
+  etag: 'W/"d-Ssxx4FRxEutDLwo2+xkkxKc4y0k"',
+  connection: 'keep-alive',
+  'x-powered-by': 'Express',
+  'content-length': '13'
+  'content-type': 'application/json; charset=utf-8'
+}
+```
+
+- helpers下的headers.ts
+
+``` typescript
+// 把字符串的headers都变成对象
+export function parseHeaders(headers: string): any {
+  // parsed是个空对象
+  let parsed = Object.create(null)
+  // 如果headers是空的
+  if (!headers) {
+    // 直接返回对象
+    return parsed
+  }
+  // 因为headers里所有键值对都是回车分割的
+  headers.split('\r\n').forEach(line => {
+    let [key, val] = line.split(':')
+    key = key.trim().toLowerCase()
+    if (!key) {
+      // 这里return还是跳到下个循环
+      return
+    }
+    if (val) {
+      val = val.trim()
+    }
+    parsed[key] = val
+  })
+
+  return parsed
+}
+```
+
+- xhr.ts
+
+``` typescript
+...
+// getAllResponseHeaders()方法返回所有的响应头
+const responseHeaders = parseHeaders(request.getAllResponseHeaders())
+...
+```
+
+# 处理响应data
+
+有时候响应数据默认是字符串，需要转换为json字符串
+
+- helper下的data.ts
+
+``` typescript
+export function transformResponse(data: any): any {
+    if (typeof data === 'string') {
+      try {
+        //转换为json字符串
+        data = JSON.parse(data)
+      } catch (e) {
+        // do nothing
+      }
+    }
+    return data
+  }
+```
+
+- src下的index.ts
+
+``` typescript
+...
+function axios(config: AxiosRequestConfig): AxiosPromise {
+  processConfig(config)
+  // 返回一个promise对象
+  return xhr(config).then((res) => {
+    // 将返回的数先转换一下
+    return transformResponseData(res)
+  })
+}
+...
+```
+
+# 处理异常错误
+
+## 需求
+
+1. 网络错误
+2. 超时错误
+3. 非200响应错误
+
+## 处理
+
+- types下index.ts
+
+``` typescript
+...
+export interface AxiosRequestConfig {
+  ...
+  timeout?:number
+}
+```
+
+- xhs.ts
+
+``` typescript
+// 返回resolve值是AxiosResponse类型的Promise对象，
+export default function xhr(config: AxiosRequestConfig): AxiosPromise {
+  return new Promise((resolve,reject) => {
+      //添加timeout变量
+    const { data = null, url, method = 'get', headers, responseType,timeout } = config
+...
+
+    // 超时默认时间是0，永不超时
+    if (timeout) {
+      request.timeout = timeout
+    }
+    
+    // ontimeout内置事件
+    request.ontimeout = function handleTimeout() {
+      reject(new Error(`Timeout of ${timeout} ms exceeded`))
+    }
+
+    request.open(method.toUpperCase(), url, true)
+
+    // 请求状态变化监听器
+    request.onreadystatechange = function handleLoad() {
+      ...
+
+      // 网络超时和连接错误时都为状态码都为0
+      if (request.status === 0) {
+        return
+      }
+      ...
+      handleResponse(response)
+    }
+    // 处理网络错误
+    request.onerror = function handleError() {
+      reject(new Error('Network Error'))
+    }
+    ...
+    //这个函数用来出来返回数据
+    //状态码不正常则丢出错误
+    function handleResponse(response: AxiosResponse) {
+      if (response.status >= 200 && response.status < 300) {
+        resolve(response)
+      } else {
+        reject(new Error(`Request failed with status code ${response.status}`))
+      }
+    }
+  })
+}
+```
+
+## 测试demo
+
+- examples下创建error
+
+- 其他参考文档

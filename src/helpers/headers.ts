@@ -28,3 +28,29 @@ export function processHeaders (headers: any, data: any): any {
   }
   return headers
 }
+
+// 把字符串的headers都变成对象
+export function parseHeaders(headers: string): any {
+  // parsed是个空对象
+  let parsed = Object.create(null)
+  // 如果headers是空的
+  if (!headers) {
+    // 直接返回对象
+    return parsed
+  }
+  // 因为headers里所有键值对都是回车分割的
+  headers.split('\r\n').forEach(line => {
+    let [key, val] = line.split(':')
+    key = key.trim().toLowerCase()
+    if (!key) {
+      // 这里return还是跳到下个循环
+      return
+    }
+    if (val) {
+      val = val.trim()
+    }
+    parsed[key] = val
+  })
+
+  return parsed
+}
