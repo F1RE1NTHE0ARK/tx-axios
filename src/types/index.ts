@@ -86,3 +86,22 @@ export interface AxiosError extends Error {
   // 是否为axios本身的错误
   isAxiosError: boolean
 }
+
+// 拦截器对外接口
+// 接口有两个方法，user和eject
+export interface AxiosInterceptorManager<T> {
+  // use接收两个方法作为参数，并返回创建拦截器的id供eject时候用（number类型）
+  // resovlved是ResolvedFn类型，可以选择作为请求或者是响应拦截器
+  use(resolved: ResolvedFn<T>, rejected?: RejectedFn): number
+
+  eject(id: number): void
+}
+// 支持返回同步逻辑((val: T): T)，即return config什么的普通对象
+// 支持返回异步逻辑( Promise<T>)
+export interface ResolvedFn<T = any> {
+  (val: T): T | Promise<T>
+}
+// error可能是任何类型的错误
+export interface RejectedFn {
+  (error: any): any
+}

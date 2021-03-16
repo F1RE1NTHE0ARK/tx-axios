@@ -86,6 +86,9 @@ router.put('/extend/put',function(req,res){
 router.patch('/extend/patch',function(req,res){
   res.json(req.body)
 })
+router.get('/interceptor/get',function(req,res){
+  res.end('hello')
+})
 
 
 

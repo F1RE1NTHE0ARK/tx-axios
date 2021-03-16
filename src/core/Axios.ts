@@ -1,7 +1,37 @@
-import { AxiosRequestConfig, AxiosPromise, Method } from '../types'
+import { AxiosRequestConfig, AxiosPromise, Method,AxiosResponse,ResolvedFn,RejectedFn} from '../types'
 import dispatchRequest from './dispatchRequest'
+import InterceptorManager from './InterceptorManager'
+
+// 一个拦截器对象
+interface Interceptors {
+  // request里存了所有请求拦截器，类型为AxiosRequestConfig类型（即promise中resolve函数的参数的类型）
+  // response里存了所有响应拦截器，类型为AxiosResponse类型（即promise中resolve函数的参数的类型）
+  request: InterceptorManager<AxiosRequestConfig>
+  response: InterceptorManager<AxiosResponse>
+}
+
+// 链式调用数组接口
+// 是一个包含拦截器和请求的对象
+interface PromiseChain<T> {
+  // 后面的是dispatchRequest的类型
+  resolved: ResolvedFn<T> | ((config: AxiosRequestConfig) => AxiosPromise)
+  rejected?: RejectedFn
+}
+
 // 定义了一个Axios类，他有很多实例方法，限制类型在src下的axios.ts中限制
 export default class Axios {
+
+  interceptors: Interceptors
+
+  constructor() {
+    // 初始化
+    // 用的时候即axios.interceptors.request.user...
+    this.interceptors = {
+      request: new InterceptorManager<AxiosRequestConfig>(),
+      response: new InterceptorManager<AxiosResponse>()
+    }
+  }
+
   request(url: any, config?: any): AxiosPromise {
     if (typeof url === 'string') {
       if (!config) {
@@ -11,7 +41,34 @@ export default class Axios {
     } else {
       config = url
     }
-    return dispatchRequest(config)
+    // 链式调用
+    // 有一个发送请求的初始值
+    const chain: PromiseChain<any>[] = [{
+      resolved: dispatchRequest,
+      rejected: undefined
+    }]
+    
+    // 请求拦截器是先添加的后调用，所以要unshift
+    // forEach是拦截器类里的遍历拦截器方法
+    this.interceptors.request.forEach(interceptor => {
+      chain.unshift(interceptor)
+    })
+  // 响应拦截器是先添加的先调用，所以要push
+    this.interceptors.response.forEach(interceptor => {
+      chain.push(interceptor)
+    })
+    // 初始值接收config参数给dispatchRequest执行请求
+    let promise = Promise.resolve(config)
+  
+    // 如果拦截器中有
+    while (chain.length) {
+      // 断言chain不为空
+      const { resolved, rejected } = chain.shift()!
+      // 依次执行函数
+      promise = promise.then(resolved, rejected)
+    }
+  
+    return promise
   }
 
   get(url: string, config?: AxiosRequestConfig): AxiosPromise {
