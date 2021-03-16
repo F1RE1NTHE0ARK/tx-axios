@@ -16,6 +16,12 @@ export type Method =
   | 'PATCH'
 // 定义一个新接口
 export interface Axios {
+
+  interceptors:{
+    request:AxiosInterceptorManager<AxiosRequestConfig>
+    response:AxiosInterceptorManager<AxiosResponse>
+  }
+
   // 包含方法，以下同
   request<T = any>(config: AxiosRequestConfig): AxiosPromise<T>
 
