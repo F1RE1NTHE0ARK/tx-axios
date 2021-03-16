@@ -1,5 +1,6 @@
-import { AxiosRequestConfig , AxiosPromise,AxiosResponse} from './types'
-import {parseHeaders, processHeaders} from './helpers/headers'
+import { AxiosRequestConfig , AxiosPromise,AxiosResponse} from '../types'
+import {parseHeaders, processHeaders} from '../helpers/headers'
+import {createError} from '../helpers/error'
 // 返回resolve值是AxiosResponse类型的Promise对象，
 export default function xhr(config: AxiosRequestConfig): AxiosPromise {
   return new Promise((resolve,reject) => {
@@ -19,10 +20,15 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
     
     // ontimeout内置事件
     request.ontimeout = function handleTimeout() {
-      reject(new Error(`Timeout of ${timeout} ms exceeded`))
+      reject(createError(
+        `Timeout of ${config.timeout} ms exceeded`,
+        config,
+        'ECONNABORTED',
+        request
+      ))
     }
-
-    request.open(method.toUpperCase(), url, true)
+    // 同样这里url也是可以确保有的所以加了类型断言
+    request.open(method.toUpperCase(), url!, true)
 
     // 请求状态变化监听器
     request.onreadystatechange = function handleLoad() {
@@ -58,7 +64,12 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
     }
     // 处理网络错误
     request.onerror = function handleError() {
-      reject(new Error('Network Error'))
+      reject(createError(
+        'Network Error',
+        config,
+        null,
+        request
+      ))
     }
     Object.keys(headers).forEach((name) => {
       if (data === null && name.toLowerCase() === 'content-type') {

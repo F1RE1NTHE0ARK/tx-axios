@@ -783,3 +783,359 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
 - examples下创建error
 
 - 其他参考文档
+
+# 增强报错信息
+
+## 需求
+
+其实就是把除了报错码外的其他你传的东西再丢回来
+
+- types/index.ts
+
+``` typescript
+...
+export interface AxiosError extends Error {
+  // 请求配置
+  config: AxiosRequestConfig
+  // 报错信息
+  code?: string
+  // 请求参数
+  request?: any
+  // 响应数据
+  response?: AxiosResponse
+  // 是否为axios本身的错误
+  isAxiosError: boolean
+}
+```
+
+- helpers/error.ts
+
+> 这个工厂函数只是拓展了原来的Error类
+
+``` typescript
+//重新创建一个接口也是可以的
+interface AxiosErrorType extends Error{
+  isAxiosError:boolean,
+  config:AxiosRequestConfig,
+  code?:string|null,
+  request?:any,
+  response?:AxiosResponse
+}
+class AxiosError extends Error implements AxiosErrorType{
+	//...
+}
+function createError():AxiosErrorType{
+	return new AxiosError(message,config,request,response)
+}
+```
+
+
+
+``` typescript
+import { AxiosRequestConfig, AxiosResponse } from '../types'
+
+export class AxiosError extends Error {
+    // 公共实例属性
+  isAxiosError: boolean
+  config: AxiosRequestConfig
+  code?: string | null
+  request?: any
+  response?: AxiosResponse
+
+  constructor(
+    message: string,
+    config: AxiosRequestConfig,
+    code?: string | null,
+    request?: any,
+    response?: AxiosResponse
+  ) {
+    //   继承Error的message
+    super(message)
+
+    this.config = config
+    this.code = code
+    this.request = request
+    this.response = response
+    this.isAxiosError = true
+    // 这个是让原来的Error类生效
+    // https://github.com/Microsoft/TypeScript-wiki/blob/master/Breaking-Changes.md#extending-built-ins-like-error-array-and-map-may-no-longer-work
+    Object.setPrototypeOf(this, AxiosError.prototype)
+  }
+}
+
+export function createError(
+  message: string,
+  config: AxiosRequestConfig,
+  code?: string | null,
+  request?: any,
+  response?: AxiosResponse
+): AxiosError {
+  const error = new AxiosError(message, config, code, request, response)
+
+  return error
+}
+```
+
+# 拓展接口
+
+为了用户更加方便地使用 axios 发送请求，我们可以为所有支持请求方法扩展一些接口：
+
+`axios.request(config)`
+`axios.get(url[, config])`
+...
+
+- types/index.ts
+
+``` typescript
+...
+export interface Axios {
+  // 包含方法，以下同
+  request(config: AxiosRequestConfig): AxiosPromise
+
+  get(url: string, config?: AxiosRequestConfig): AxiosPromise
+
+  delete(url: string, config?: AxiosRequestConfig): AxiosPromise
+
+  head(url: string, config?: AxiosRequestConfig): AxiosPromise
+
+  options(url: string, config?: AxiosRequestConfig): AxiosPromise
+
+  post(url: string, data?: any, config?: AxiosRequestConfig): AxiosPromise
+
+  put(url: string, data?: any, config?: AxiosRequestConfig): AxiosPromise
+
+  patch(url: string, data?: any, config?: AxiosRequestConfig): AxiosPromise
+}
+// 定义接口，本身是一个函数，里面继承了Axios接口
+export interface AxiosInstance extends Axios {
+  (config: AxiosRequestConfig): AxiosPromise
+}
+
+export interface AxiosRequestConfig {
+...
+```
+
+- src下新建core文件夹Axios.ts
+
+``` typescript
+import { AxiosRequestConfig, AxiosPromise, Method } from '../types'
+import dispatchRequest from './dispatchRequest'
+// 定义了一个Axios类，他有很多实例方法，限制类型在src下的axios.ts中限制
+export default class Axios {
+  request(config: AxiosRequestConfig): AxiosPromise {
+    return dispatchRequest(config)
+  }
+
+  get(url: string, config?: AxiosRequestConfig): AxiosPromise {
+    return this._requestMethodWithoutData('get', url, config)
+  }
+
+  delete(url: string, config?: AxiosRequestConfig): AxiosPromise {
+    return this._requestMethodWithoutData('delete', url, config)
+  }
+
+  head(url: string, config?: AxiosRequestConfig): AxiosPromise {
+    return this._requestMethodWithoutData('head', url, config)
+  }
+
+  options(url: string, config?: AxiosRequestConfig): AxiosPromise {
+    return this._requestMethodWithoutData('options', url, config)
+  }
+
+  post(url: string, data?: any, config?: AxiosRequestConfig): AxiosPromise {
+    return this._requestMethodWithData('post', url, data, config)
+  }
+
+  put(url: string, data?: any, config?: AxiosRequestConfig): AxiosPromise {
+    return this._requestMethodWithData('put', url, data, config)
+  }
+
+  patch(url: string, data?: any, config?: AxiosRequestConfig): AxiosPromise {
+    return this._requestMethodWithData('patch', url, data, config)
+  }
+// 这个Method类型来自types下的index.ts
+// 这个函数的作用是合并get和request的config参数
+// 下面的函数多加了data
+  _requestMethodWithoutData(method: Method, url: string, config?: AxiosRequestConfig) {
+    return this.request(
+      Object.assign(config || {}, {
+        method,
+        url
+      })
+    )
+  }
+
+  _requestMethodWithData(method: Method, url: string, data?: any, config?: AxiosRequestConfig) {
+    return this.request(
+      Object.assign(config || {}, {
+        method,
+        url,
+        data
+      })
+    )
+  }
+}
+```
+
+- core下dispatchRequest.ts，用来执行请求动作（把原来src下的axios.ts拷贝进来）
+
+``` typescript
+...
+function transformURL(config: AxiosRequestConfig): string {
+  const { url, params } = config
+//   严格模式下url可能为undefined类型(AxiosRequestConfig里url是可选属性)
+// 在这里我们可以确认url是肯定有的，所以用了类型断言，确保url不为空
+  return bulidURL(url!, params)
+}
+...
+// 改了个名字，没别的意义，只是为了模块化编程
+export default function dispatchRequest(config: AxiosRequestConfig): AxiosPromise {
+    processConfig(config)
+    return xhr(config).then(res => {
+      return transformResponseData(res)
+    })
+  }
+```
+
+- helpers/util.ts
+
+``` typescript
+// 混合对象（一个泛型接口）
+// 作用是将from的所有属性拷贝到to中
+// 输出交叉类型
+export function extend<T, U>(to: T, from: U): T & U {
+  for (const key in from) {
+    // 因为to是合并后的类型，他也必须符合U类型，所以要进行断言
+    // 如果不写from[key] as any则无法赋值一个U类型给交叉类型T U
+    // 如果括号开头的语句不加分号，那么代码压缩后合并到一行后非常容易变成一个函数的调用了，
+    // 所以需要加分号。另外以 +、-、/、()、[] 这些字符开头的语句，都需要加分号
+    ;(to as T & U)[key] = from[key] as any
+  }
+  return to as T & U
+}
+```
+
+- 原src下的axios.ts
+
+``` typescript
+import { AxiosInstance } from './types'
+import Axios from './core/Axios'
+import { extend } from './helpers/util'
+
+// 创建一个Axios实例
+// 输出一个继承了Axios接口类型的AxiosInstance类型
+function createInstance(): AxiosInstance {
+  const context = new Axios()
+  // instance是一个函数，他其实就是Axios类上的request方法
+  // 用bind是因为他要绑定Axios类的上下文来正确使用this
+  const instance = Axios.prototype.request.bind(context)
+
+  // 把所有context的示例属性和原型属性拷贝到instance中
+  extend(instance, context)
+
+  return instance as AxiosInstance
+}
+// 这时候调用axios()会默认调用Axios类的request方法
+// 也可以调用axios.get(),因为instance拥有了Axios的所有实例方法
+const axios = createInstance()
+
+export default axios
+```
+
+- core下xhr.ts（原来在src下）
+
+``` typescript
+...
+// 同样这里url也是可以确保有的所以加了类型断言
+    request.open(method.toUpperCase(), url!, true)
+
+...
+```
+
+- server.js
+
+``` typescript
+router.get('/extend/get',function(req,res){
+  res.json({
+    msg:'hello world'
+  })
+})
+router.options('/extend/options',function(req,res){
+  res.end
+})
+router.delete('/extend/delete',function(req,res){
+  res.end
+})
+
+router.head('/extend/head',function(req,res){
+  res.end
+})
+router.post('/extend/post',function(req,res){
+  res.json(req.body)
+})
+router.put('/extend/put',function(req,res){
+  res.json(req.body)
+})
+router.patch('/extend/patch',function(req,res){
+  res.json(req.body)
+})
+```
+
+
+
+# 实现参数可选
+
+## 需求
+
+利用函数重载让参数变成可选
+
+``` typescript
+axios({
+  url: '/extend/post',
+  method: 'post',
+  data: {
+    msg: 'hi'
+  }
+})
+
+axios('/extend/post', {
+  method: 'post',
+  data: {
+    msg: 'hello'
+  }
+})
+```
+
+- types/index.ts
+
+```typescript
+export interface AxiosInstance extends Axios {
+  (config: AxiosRequestConfig): AxiosPromise
+//++
+  (url: string, config?: AxiosRequestConfig): AxiosPromise
+}
+```
+
+- core/Axios.ts
+
+``` typescript
+  request(url: any, config?: any): AxiosPromise {
+    if (typeof url === 'string') {
+      if (!config) {
+        config = {}
+      }
+      config.url = url
+    } else {
+      config = url
+    }
+    return dispatchRequest(config)
+  }
+```
+
+## 编写demo
+
+同需求，在extend/app.ts
+
+# 为响应数据定义泛型接口
+
+不知道有什么用...
