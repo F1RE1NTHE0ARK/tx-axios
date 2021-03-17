@@ -2,7 +2,7 @@ import { AxiosPromise, AxiosRequestConfig, AxiosResponse } from '../types'
 import xhr from './xhr'
 import { bulidURL } from '../helpers/url'
 import { transformRequest, transformResponse } from '../helpers/data'
-import { processHeaders } from '../helpers/headers'
+import { processHeaders,flattenHeaders } from '../helpers/headers'
 
 
 
@@ -10,6 +10,8 @@ function processConfig(config: AxiosRequestConfig): void {
   config.url = transformURL(config)
   config.headers = transformHeaders(config)
   config.data = transformRequestData(config)
+  // 将传入的配置传入拉平
+  config.headers = flattenHeaders(config.headers,config.method)
 }
 
 function transformURL(config: AxiosRequestConfig): string {

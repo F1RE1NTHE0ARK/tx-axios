@@ -1,7 +1,7 @@
 import { AxiosRequestConfig, AxiosPromise, Method,AxiosResponse,ResolvedFn,RejectedFn} from '../types'
 import dispatchRequest from './dispatchRequest'
 import InterceptorManager from './InterceptorManager'
-
+import mergeConfig from './mergeConfig'
 // 一个拦截器对象
 interface Interceptors {
   // request里存了所有请求拦截器，类型为AxiosRequestConfig类型（即promise中resolve函数的参数的类型）
@@ -20,10 +20,13 @@ interface PromiseChain<T> {
 
 // 定义了一个Axios类，他有很多实例方法，限制类型在src下的axios.ts中限制
 export default class Axios {
-
+  // 为Axios添加默认属性
+  defaults: AxiosRequestConfig
   interceptors: Interceptors
 
-  constructor() {
+  constructor(initConfig: AxiosRequestConfig) {
+    // 初始化类时候传入配置
+    this.defaults = initConfig
     // 初始化
     // 用的时候即axios.interceptors.request.user...
     this.interceptors = {
@@ -41,6 +44,7 @@ export default class Axios {
     } else {
       config = url
     }
+    config = mergeConfig(this.defaults, config)
     // 链式调用
     // 有一个发送请求的初始值
     const chain: PromiseChain<any>[] = [{

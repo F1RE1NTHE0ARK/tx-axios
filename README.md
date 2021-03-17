@@ -1139,3 +1139,506 @@ export interface AxiosInstance extends Axios {
 # 为响应数据定义泛型接口
 
 不知道有什么用...
+
+# 拦截器
+
+## 需求
+
+> 可以在发送前和响应后执行特定的多个操作
+
+``` typescript
+axios.interceptors.request.use(function (config) {
+  // 在发送请求之前可以做一些事情
+  config.header.text+='额外东东'
+  return config;
+}, function (error) {
+  // 处理请求错误
+  return Promise.reject(error);
+});
+// 添加一个响应拦截器
+axios.interceptors.response.use(function (response) {
+  // 处理响应数据
+  response.data.text+='额外东东'
+  return response;
+}, function (error) {
+  // 处理响应错误
+  return Promise.reject(error);
+});
+```
+
+> 可以去掉拦截器
+
+```typescript
+const myInterceptor = axios.interceptors.request.use(function () {/*...*/})
+axios.interceptors.request.eject(myInterceptor)
+```
+
+- types/index.ts
+
+``` typescript
+// 定义一个新接口
+export interface Axios {
+//添加接口
+  interceptors:{
+    request:AxiosInterceptorManager<AxiosRequestConfig>
+    response:AxiosInterceptorManager<AxiosResponse>
+  }
+	...
+}
+...
+// 拦截器对外接口
+// 接口有两个方法，user和eject
+export interface AxiosInterceptorManager<T> {
+  // use接收两个方法作为参数，并返回创建拦截器的id供eject时候用（number类型）
+  // resovlved是ResolvedFn类型，可以选择作为请求或者是响应拦截器
+  use(resolved: ResolvedFn<T>, rejected?: RejectedFn): number
+
+  eject(id: number): void
+}
+// 支持返回同步逻辑((val: T): T)，即return config什么的普通对象
+// 支持返回异步逻辑( Promise<T>)
+export interface ResolvedFn<T = any> {
+  (val: T): T | Promise<T>
+}
+// error可能是任何类型的错误
+export interface RejectedFn {
+  (error: any): any
+}
+```
+
+- core下interceptorManager.ts
+
+``` typescript
+import { ResolvedFn, RejectedFn } from '../types'
+
+// 拦截器类型是一个对象，对象内有两个方法
+interface Interceptor<T> {
+  resolved: ResolvedFn<T>
+  rejected?: RejectedFn
+}
+
+export default class InterceptorManager<T> {
+    // 这里是存储所有拦截器的数组，可以是拦截器类型，也可以是null（即某个拦截器给eject掉时）类型
+  private interceptors: Array<Interceptor<T> | null>
+
+  constructor() {
+    //   初始化
+    this.interceptors = []
+  }
+// 调用use实例方法时，往拦截器数组添加拦截器，并以拦截器长度来做id
+  use(resolved: ResolvedFn<T>, rejected?: RejectedFn): number {
+    this.interceptors.push({
+      resolved,
+      rejected
+    })
+    // 拦截器长度来做id
+    return this.interceptors.length - 1
+  }
+// 调用forEach方法时接收一个方法作为参数（拦截器内部用）
+// 遍历所有拦截器，然后用接收的方法去执行这个拦截器
+  forEach(fn: (interceptor: Interceptor<T>) => void): void {
+    this.interceptors.forEach(interceptor => {
+      if (interceptor !== null) {
+        fn(interceptor)
+      }
+    })
+  }
+// 调用eject实例方法时，将拦截器数组里的指定id拦截器清除
+  eject(id: number): void {
+    if (this.interceptors[id]) {
+      this.interceptors[id] = null
+    }
+  }
+}
+```
+
+- core下Axios.ts
+
+``` typescript
+...
+// 一个拦截器对象
+interface Interceptors {
+  // request里存了所有请求拦截器，类型为AxiosRequestConfig类型（即promise中resolve函数的参数的类型）
+  // response里存了所有响应拦截器，类型为AxiosResponse类型（即promise中resolve函数的参数的类型）
+  request: InterceptorManager<AxiosRequestConfig>
+  response: InterceptorManager<AxiosResponse>
+}
+
+// 链式调用数组接口
+// 是一个包含拦截器和请求的对象
+interface PromiseChain<T> {
+  // 后面的是dispatchRequest的类型
+  resolved: ResolvedFn<T> | ((config: AxiosRequestConfig) => AxiosPromise)
+  rejected?: RejectedFn
+}
+
+// 定义了一个Axios类，他有很多实例方法，限制类型在src下的axios.ts中限制
+export default class Axios {
+
+  interceptors: Interceptors
+
+  constructor() {
+    // 初始化
+    // 用的时候即axios.interceptors.request.user...
+    this.interceptors = {
+      request: new InterceptorManager<AxiosRequestConfig>(),
+      response: new InterceptorManager<AxiosResponse>()
+    }
+  }
+
+  request(url: any, config?: any): AxiosPromise {
+    if (typeof url === 'string') {
+      if (!config) {
+        config = {}
+      }
+      config.url = url
+    } else {
+      config = url
+    }
+    // 链式调用
+    // 有一个发送请求的初始值
+    const chain: PromiseChain<any>[] = [{
+      resolved: dispatchRequest,
+      rejected: undefined
+    }]
+    
+    // 请求拦截器是先添加的后调用，所以要unshift
+    // forEach是拦截器类里的遍历拦截器方法
+    this.interceptors.request.forEach(interceptor => {
+      chain.unshift(interceptor)
+    })
+  // 响应拦截器是先添加的先调用，所以要push
+    this.interceptors.response.forEach(interceptor => {
+      chain.push(interceptor)
+    })
+    // 初始值接收config参数给dispatchRequest执行请求
+    let promise = Promise.resolve(config)
+  
+    // 如果拦截器中有
+    while (chain.length) {
+      // 断言chain不为空
+      const { resolved, rejected } = chain.shift()!
+      // 依次执行函数
+      promise = promise.then(resolved, rejected)
+    }
+  
+    return promise
+  }
+...
+}
+```
+
+## 编写demo
+
+- server.js
+
+``` typescript
+...
+router.get('/interceptor/get',function(req,res){
+  res.end('hello')
+})
+```
+
+## 调用步骤
+
+``` typescript
+//初始化了拦截器数组为发送请求拦截器
+const chain: PromiseChain<any>[] = [{
+    resolved: dispatchRequest,
+    rejected: undefined
+}]
+```
+
+``` typescript
+//添加拦截器，这里只传了use里的resolve参数，reject是可选的
+//作用是向拦截器数组中添加拦截器
+axios.interceptors.request.use(config => {
+  config.headers.test += '1'
+  return config
+})
+...
+axios.interceptors.response.use(res => {
+  res.data += '1'
+  return res
+})
+```
+
+``` typescript
+//通过InterceptorManager下的forEach为拦截器数组添加拦截器数组
+//形成拦截器链式调用链
+this.interceptors.request.forEach(interceptor => {
+      chain.unshift(interceptor)
+})
+...
+```
+
+``` typescript
+//interceptor下app.ts
+//调用axios触发请求请求
+//axios为core下的Axios类创建的实例
+axios({
+  url: '/interceptor/get',
+ ...
+}))
+```
+
+``` typescript
+//Axios下request函数开始发送请求
+let promise = Promise.resolve(config)
+
+//并按照拦截器数组顺序调用拦截器
+while (chain.length) {
+   const { resolved, rejected } = chain.shift()!
+   promise = promise.then(resolved, rejected)
+}
+```
+
+# 合并配置
+
+## 需求
+
+可以添加默认配置
+
+```typescript
+axios.defaults.headers.common['test'] = 123
+axios.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded'
+axios.defaults.timeout = 2000
+```
+
+- src下defaults.ts
+
+``` typescript
+import { AxiosRequestConfig } from './types'
+// 默认请求配置
+const defaults: AxiosRequestConfig = {
+  method: 'get',
+  timeout: 0,
+  headers: {
+    common: {
+      Accept: 'application/json, text/plain, */*'
+    }
+  }
+}
+
+const methodsNoData = ['delete', 'get', 'head', 'options']
+// 这里为headers添加其他不需要请求参数的请求方法默认配置
+methodsNoData.forEach(method => {
+  defaults.headers[method] = {}
+})
+
+const methodsWithData = ['post', 'put', 'patch']
+// 这里为headers添加其他需要请求参数的请求方法默认配置
+methodsWithData.forEach(method => {
+  defaults.headers[method] = {
+    'Content-Type': 'application/x-www-form-urlencoded'
+  }
+})
+
+export default defaults
+```
+
+- core下的Axios.ts
+
+``` typescript
+export default class Axios {
+  // 为Axios添加默认属性
+  defaults: AxiosRequestConfig
+  interceptors: Interceptors
+
+  constructor(initConfig: AxiosRequestConfig) {
+    // 初始化类时候传入配置
+    this.defaults = initConfig
+    // 初始化
+    // 用的时候即axios.interceptors.request.user...
+    this.interceptors = {
+      request: new InterceptorManager<AxiosRequestConfig>(),
+      response: new InterceptorManager<AxiosResponse>()
+    }
+  }
+...
+    config = mergeConfig(this.defaults, config)
+	...
+ }
+```
+
+- types下的axios.ts
+
+``` typescript
+function createInstance(config: AxiosRequestConfig): AxiosInstance {
+  // 将默认参数传入Axios类构建函数
+  const context = new Axios(config)
+  ...
+}
+// 将默认参数传入Axios类构建函数
+const axios = createInstance(defaults)
+```
+
+- core下mergeConfig.ts
+
+``` typescript
+import { AxiosRequestConfig } from '../types'
+import { isPlainObject ,deepMerge} from '../helpers/util'
+
+const strats = Object.create(null)
+// 默认合并方法
+// val2不为空则返回val2，否则返回原值
+function defaultStrat(val1: any, val2: any): any {
+    return typeof val2 !== 'undefined' ? val2 : val1
+}
+// 传入的配置优先合并方法
+// val2不为空返回val2，否则什么都不返回
+function fromVal2Strat(val1: any, val2: any): any {
+    if (typeof val2 !== 'undefined') {
+        return val2
+    }
+}
+// 深度合并
+function deepMergeStrat(val1: any, val2: any): any {
+    // 如果val2是对象
+    if (isPlainObject(val2)) {
+        return deepMerge(val1, val2)
+    } else if (typeof val2 !== 'undefined') {
+        return val2
+        // 如果val2为空，val为对象
+    } else if (isPlainObject(val1)) {
+        return deepMerge(val1)
+    } else if (typeof val1 !== 'undefined') {
+        return val1
+    }
+}
+const stratKeysDeepMerge = ['headers']
+
+// 根据需求，headers配置要和传入的配置要深度合并
+stratKeysDeepMerge.forEach(key => {
+    strats[key] = deepMergeStrat
+})
+const stratKeysFromVal2 = ['url', 'params', 'data']
+
+// 根据需求，url，params，data等配置是传入的配置优先覆盖
+stratKeysFromVal2.forEach(key => {
+    strats[key] = fromVal2Strat
+})
+
+// 合并请求配置
+// 可以没有传入的配置，即返回原配置
+export default function mergeConfig(
+    config1: AxiosRequestConfig,
+    config2?: AxiosRequestConfig
+): AxiosRequestConfig {
+    // 如果没有传入传入的配置，则为空配置
+    if (!config2) {
+        config2 = {}
+    }
+
+    const config = Object.create(null)
+
+    // 对于传入的配置，都要合并到默认配置
+    for (let key in config2) {
+        mergeField(key)
+    }
+    for (let key in config1) {
+        // 防止重复合并
+        if (!config2[key]) {
+            mergeField(key)
+        }
+    }
+    // 合并辅助方法
+    // 如果当前配置项（例如headers，url，params....）有分配合并方法则使用当前合并方法
+    // 否则使用默认合并方法
+    // 最后返回合并后配置
+    function mergeField(key: string): void {
+        const strat = strats[key] || defaultStrat
+        config[key] = strat(config1[key], config2![key])
+    }
+
+    return config
+}
+```
+
+- 修改types下index.ts
+
+``` typescript
+export interface AxiosRequestConfig {
+  ...
+  [propName: string]: any
+}
+```
+
+- util.ts添加深拷贝方法
+
+``` typescript
+// 深拷贝（其实就是合并对象里所有的键）
+// 接收一个或多个参数，最后返回合并的对象
+export function deepMerge(...objs: any[]): any {
+  const result = Object.create(null)
+// 遍历参数
+  objs.forEach(obj => {
+    if (obj) {
+      // 遍历对象的键
+      Object.keys(obj).forEach(key => {
+        // 对应对象的键的值
+        const val = obj[key]
+        // 如果此值是个对象
+        if (isPlainObject(val)) {
+          // 判断result对应的键值对是否是对象
+          if (isPlainObject(result[key])) {
+            // 是则重复执行合并对象操作（递归）
+            result[key] = deepMerge(result[key], val)
+          } else {
+            // 否则直接赋值
+            result[key] = deepMerge({}, val)
+          }
+        } else {
+          // 否则直接设置合并对象的键值对
+          result[key] = val
+        }
+      })
+    }
+  })
+
+  return result
+}
+```
+
+- helpers下的headers
+
+``` typescript
+// 拉平参数
+export function flattenHeaders(headers: any, method: Method): any {
+  if (!headers) {
+    return headers
+  }
+  // 传入的参数放最后一个参数，因为后面的配置会覆盖前面的配置
+  headers = deepMerge(headers.common || {}, headers[method] || {}, headers)
+
+  const methodsToDelete = ['delete', 'get', 'head', 'options', 'post', 'put', 'patch', 'common']
+  // 最后把最外层配置的键，(即:headers:{common:{...}}这个common去掉)
+  // 因为现在外层间的参数已经提取到和common同一层了
+  methodsToDelete.forEach(method => {
+    delete headers[method]
+  })
+
+  return headers
+}
+```
+
+- core下的dispatchRequests
+
+``` typescript
+function processConfig(config: AxiosRequestConfig): void {
+  ...
+  // 将传入的配置传入拉平
+  config.headers = flattenHeaders(config.headers,config.method)
+}
+```
+
+## 编写demo
+
+参考文档
+
+# 请求和响应配置化
+
+
+
+
+

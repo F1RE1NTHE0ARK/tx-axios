@@ -41,6 +41,7 @@ export interface Axios {
 }
 // 定义接口，本身是一个函数，里面继承了Axios接口
 export interface AxiosInstance extends Axios {
+  defaults: any;
   (config: AxiosRequestConfig): AxiosPromise
   (url: string, config?: AxiosRequestConfig): AxiosPromise
 }
@@ -56,6 +57,7 @@ export interface AxiosRequestConfig {
   // type XMLHttpRequestResponseType = "" | "arraybuffer" | "blob" | "document" | "json" | "text"
   // 和请求数据类型类似
   timeout?: number
+  [propName: string]: any
 }
 
 export interface AxiosResponse<T = any> {

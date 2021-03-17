@@ -30,3 +30,36 @@ export function extend<T, U>(to: T, from: U): T & U {
   }
   return to as T & U
 }
+
+
+// 深拷贝（其实就是合并对象里所有的键）
+// 接收一个或多个参数，最后返回合并的对象
+export function deepMerge(...objs: any[]): any {
+  const result = Object.create(null)
+// 遍历参数
+  objs.forEach(obj => {
+    if (obj) {
+      // 遍历对象的键
+      Object.keys(obj).forEach(key => {
+        // 对应对象的键的值
+        const val = obj[key]
+        // 如果此值是个对象
+        if (isPlainObject(val)) {
+          // 判断result对应的键值对是否是对象
+          if (isPlainObject(result[key])) {
+            // 是则重复执行合并对象操作（递归）
+            result[key] = deepMerge(result[key], val)
+          } else {
+            // 否则直接赋值
+            result[key] = deepMerge({}, val)
+          }
+        } else {
+          // 否则直接设置合并对象的键值对
+          result[key] = val
+        }
+      })
+    }
+  })
+
+  return result
+}

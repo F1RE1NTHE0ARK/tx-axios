@@ -1,4 +1,4 @@
-import { isPlainObject } from './util'
+import { isPlainObject ,deepMerge} from './util'
 // 对content-type字符串进行大小写转换，规范化
 function normalizeHeaderName (headers: any, normalizedName: string): void {
     // 如果没有headers，什么都不做
@@ -53,4 +53,21 @@ export function parseHeaders(headers: string): any {
   })
 
   return parsed
+}
+// 拉平参数
+export function flattenHeaders(headers: any, method: Method): any {
+  if (!headers) {
+    return headers
+  }
+  // 传入的参数放最后一个参数，因为后面的配置会覆盖前面的配置
+  headers = deepMerge(headers.common || {}, headers[method] || {}, headers)
+
+  const methodsToDelete = ['delete', 'get', 'head', 'options', 'post', 'put', 'patch', 'common']
+  // 最后把最外层配置的键，(即:headers:{common:{...}}这个common去掉)
+  // 因为现在外层间的参数已经提取到和common同一层了
+  methodsToDelete.forEach(method => {
+    delete headers[method]
+  })
+
+  return headers
 }
