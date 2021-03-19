@@ -1,10 +1,11 @@
-import { AxiosInstance,AxiosRequestConfig } from './types'
+import { AxiosInstance,AxiosRequestConfig,AxiosStatic } from './types'
 import Axios from './core/Axios'
 import { extend } from './helpers/util'
 import defaults from './default'
+import mergeConfig from './core/mergeConfig'
 // 创建一个Axios实例
 // 输出一个继承了Axios接口类型的AxiosInstance类型
-function createInstance(config: AxiosRequestConfig): AxiosInstance {
+function createInstance(config: AxiosRequestConfig): AxiosStatic {
   // 将默认参数传入Axios类构建函数
   const context = new Axios(config)
   // instance是一个函数，他其实就是Axios类上的request方法
@@ -14,12 +15,14 @@ function createInstance(config: AxiosRequestConfig): AxiosInstance {
   // 把所有context的示例属性和原型属性拷贝到instance中
   extend(instance, context)
 
-  return instance as AxiosInstance
+  return instance as AxiosStatic
 }
 // 这时候调用axios()会默认调用Axios类的request方法
 // 也可以调用axios.get(),因为instance拥有了Axios的所有实例方法
 
 // 将默认参数传入Axios类构建函数
 const axios = createInstance(defaults)
-
+axios.create = function create(config) {
+  return createInstance(mergeConfig(defaults, config))
+}
 export default axios

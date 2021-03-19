@@ -1,4 +1,4 @@
-# tx-axios
+# srtx-axios
 
 写一个typescript的axios
 
@@ -1638,7 +1638,166 @@ function processConfig(config: AxiosRequestConfig): void {
 
 # 请求和响应配置化
 
+## 需求
 
+`transformRequest` 允许你在将请求数据发送到服务器之前对其进行修改，这只适用于请求方法 `put`、`post` 和 `patch`，如果值是数组，则数组中的最后一个函数必须返回一个字符串或 `FormData`、`URLSearchParams`、`Blob` 等类型作为 `xhr.send` 方法的参数，而且在 `transform` 过程中可以修改 `headers` 对象。
 
+而 `transformResponse` 允许你在把响应数据传递给 `then` 或者 `catch` 之前对它们进行修改
 
+``` typescript
+axios({
+  transformRequest: [(function(data) {
+    return qs.stringify(data)
+      //这里展开了默认的transformRequest
+  }), ...axios.defaults.transformRequest],
+  transformResponse: [axios.defaults.transformResponse, function(data) {
+    if (typeof data === 'object') {
+      data.b = 2
+    }
+    return data
+  }],
+  url: '/config/post',
+  method: 'post',
+  data: {
+    a: 1
+  }
+})
+```
 
+- types/index.ts
+
+``` typescript
+export interface AxiosRequestConfig {
+...
+  //他们接受AxiosTransformer类型，或者是此类型的数组
+  transformRequest?: AxiosTransformer | AxiosTransformer[]
+  transformResponse?: AxiosTransformer | AxiosTransformer[]
+...
+}
+
+export interface AxiosTransformer {
+  (data: any, headers?: any): any
+}
+```
+
+- src下defaults.ts
+
+``` typescript
+// 默认请求配置
+const defaults: AxiosRequestConfig = {
+ ...
+  //这里设置了默认的请求前参数
+  // 替代了  config.headers = transformHeaders(config)
+  //config.data = transformRequestData(config)
+   transformRequest: [
+    function (data: any, headers: any): any {
+      processHeaders(headers, data)
+      return transformRequest(data)
+    }
+  ],
+
+  transformResponse: [
+    function (data: any): any {
+      return transformResponse(data)
+    }
+  ]
+}
+
+```
+
+- core/transform.ts
+
+``` typescript
+import { AxiosTransformer } from '../types'
+
+export default function transform(
+  data: any,
+  headers: any,
+  fns?: AxiosTransformer | AxiosTransformer[]
+): any {
+  //如果没有传处理函数则返回原配置
+  if (!fns) {
+    return data
+  }
+  //如果传入的是单个处理函数则转换为数组统一操作
+  if (!Array.isArray(fns)) {
+    fns = [fns]
+  }
+  //遍历函数数组，一次执行
+  fns.forEach(fn => {
+    //上一个函数的返回值作为下个函数的参数
+    data = fn(data, headers)
+  })
+  return data
+}
+
+```
+
+- core下dispatchRequest.ts
+
+``` typescript
+//这里使用transform函数依次执行transformRequest的函数
+function processConfig(config: AxiosRequestConfig): void {
+  config.url = transformURL(config)
+  config.data = transform(config.data, config.headers, config.transformRequest)
+  // 将传入的配置传入拉平
+  config.headers = flattenHeaders(config.headers,config.method)
+}
+...
+//这个逻辑用不到了
+//function transformRequestData(config: AxiosRequestConfig): any {
+ // return transformRequest(config.data)
+//}
+//这个逻辑用不到了
+//function transformHeaders(config: AxiosRequestConfig) {
+//  const { headers = {}, data } = config
+//  return processHeaders(headers, data)
+//}
+
+//这里使用transform函数依次执行transformResponse的函数
+function transformResponseData(res: AxiosResponse): AxiosResponse {
+  res.data = transform(res.data, res.headers, 		res.config.transformResponse)
+  return res
+}
+```
+
+## 编写demo
+
+参考文档
+
+返回{a:1,b:2}
+
+# 静态方法拓展
+
+目前为止，我们的 axios 都是一个单例，一旦我们修改了 axios 的默认配置，会影响所有的请求。我们希望提供了一个 `axios.create` 的静态接口允许我们创建一个新的 `axios` 实例，同时允许我们传入新的配置和默认配置合并，并做为新的默认配置。
+
+- types/index.ts
+
+``` typescript
+export interface AxiosStatic extends AxiosInstance{
+  create(config?: AxiosRequestConfig): AxiosInstance
+}
+```
+
+- src下axios.ts
+
+``` typescript
+...
+// 改成了AxiosStatic类型
+function createInstance(config: AxiosRequestConfig): AxiosStatic {
+  ...
+  return instance as AxiosStatic
+}
+
+const axios = createInstance(defaults)
+
+axios.create = function create(config) {
+    //合并了defaults和create传进来的配置
+  return createInstance(mergeConfig(defaults, config))
+}
+export default axios
+```
+
+## 编写demo
+
+参考文档

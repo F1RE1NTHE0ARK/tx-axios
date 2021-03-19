@@ -45,7 +45,10 @@ export interface AxiosInstance extends Axios {
   (config: AxiosRequestConfig): AxiosPromise
   (url: string, config?: AxiosRequestConfig): AxiosPromise
 }
-
+//新增了create方法
+export interface AxiosStatic extends AxiosInstance {
+  create(config?: AxiosRequestConfig): AxiosInstance
+}
 export interface AxiosRequestConfig {
   //原来url必须穿到config里，现在可以传到get,post上（参考Axios接口）
   url?: string
@@ -57,9 +60,17 @@ export interface AxiosRequestConfig {
   // type XMLHttpRequestResponseType = "" | "arraybuffer" | "blob" | "document" | "json" | "text"
   // 和请求数据类型类似
   timeout?: number
+
+  //他们接受AxiosTransformer类型，或者是此类型的数组
+  transformRequest?: AxiosTransformer | AxiosTransformer[]
+  transformResponse?: AxiosTransformer | AxiosTransformer[]
+
   [propName: string]: any
 }
 
+export interface AxiosTransformer {
+  (data: any, headers?: any): any
+}
 export interface AxiosResponse<T = any> {
   data: T
   // http状态码
