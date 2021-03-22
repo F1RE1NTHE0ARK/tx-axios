@@ -48,6 +48,10 @@ export interface AxiosInstance extends Axios {
 //新增了create方法
 export interface AxiosStatic extends AxiosInstance {
   create(config?: AxiosRequestConfig): AxiosInstance
+  CancelToken: CancelTokenStatic
+  Cancel: CancelStatic
+  isCancel: (value: any) => boolean
+
 }
 export interface AxiosRequestConfig {
   //原来url必须穿到config里，现在可以传到get,post上（参考Axios接口）
@@ -60,10 +64,17 @@ export interface AxiosRequestConfig {
   // type XMLHttpRequestResponseType = "" | "arraybuffer" | "blob" | "document" | "json" | "text"
   // 和请求数据类型类似
   timeout?: number
+  withCredentials?: boolean
 
   //他们接受AxiosTransformer类型，或者是此类型的数组
   transformRequest?: AxiosTransformer | AxiosTransformer[]
   transformResponse?: AxiosTransformer | AxiosTransformer[]
+
+  xsrfCookieName?: string
+  xsrfHeaderName?: string
+
+  onDownloadProgress?: (e: ProgressEvent) => void
+  onUploadProgress?: (e: ProgressEvent) => void
 
   [propName: string]: any
 }
@@ -123,4 +134,38 @@ export interface ResolvedFn<T = any> {
 // error可能是任何类型的错误
 export interface RejectedFn {
   (error: any): any
+}
+
+export interface CancelToken {
+  promise: Promise<Cancel>
+  reason?: Cancel
+
+  throwIfRequested():void
+}
+
+export interface Canceler {
+  (message?: string): void
+}
+
+export interface CancelExecutor {
+  (cancel: Canceler): void
+}
+
+export interface CancelTokenSource {
+  token: CancelToken
+  cancel: Canceler
+}
+
+export interface CancelTokenStatic {
+  new(executor: CancelExecutor): CancelToken
+
+  source(): CancelTokenSource
+}
+
+export interface Cancel {
+  message?: string
+}
+
+export interface CancelStatic {
+  new(message?: string): Cancel
 }

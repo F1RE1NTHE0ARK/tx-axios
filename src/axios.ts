@@ -3,6 +3,9 @@ import Axios from './core/Axios'
 import { extend } from './helpers/util'
 import defaults from './default'
 import mergeConfig from './core/mergeConfig'
+import CancelToken from './cancel/CancelToken'
+import Cancel, { isCancel } from './cancel/Cancel'
+
 // 创建一个Axios实例
 // 输出一个继承了Axios接口类型的AxiosInstance类型
 function createInstance(config: AxiosRequestConfig): AxiosStatic {
@@ -25,4 +28,10 @@ const axios = createInstance(defaults)
 axios.create = function create(config) {
   return createInstance(mergeConfig(defaults, config))
 }
+
+axios.CancelToken = CancelToken
+axios.Cancel = Cancel
+axios.isCancel = isCancel
+
+
 export default axios

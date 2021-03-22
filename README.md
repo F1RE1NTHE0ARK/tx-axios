@@ -1801,3 +1801,505 @@ export default axios
 ## 编写demo
 
 参考文档
+
+# 取消功能
+
+## 需求
+
+即使前端设置了debounce（假设是每2秒发送请求），但服务器响应慢，需要3秒甚至更久返回结果，这是会发生以下情况：在前面的请求没有响应前，也有可能发出去多个请求。因为接口的响应时长是不定的，如果先发出去的请求响应时长比后发出去的请求要久一些，后请求的响应先回来，先请求的响应后回来，**就会出现前面请求响应结果覆盖后面请求响应结果的情况**，那么就乱了。
+
+``` typescript
+const CancelToken = axios.CancelToken;
+const source = CancelToken.source();
+
+axios.get('/user/12345', {
+  cancelToken: source.token
+}).catch(function (e) {
+  if (axios.isCancel(e)) {
+    console.log('Request canceled', e.message);
+  } else {
+    // 处理错误
+  }
+});
+
+// 取消请求 (请求原因是可选的)
+source.cancel('Operation canceled by the user.');
+```
+
+或者这样
+
+```typescript
+const CancelToken = axios.CancelToken;
+let cancel;
+
+axios.get('/user/12345', {
+  cancelToken: new CancelToken(function executor(c) {
+    cancel = c;
+  })
+});
+
+// 取消请求
+cancel();
+```
+
+## 第一种方法调用
+
+``` typescript
+import axios, { Canceler } from '../../src/index'
+
+/*CancelToken拓展为axios的静态方法，（在axios.ts中指明静态方法）
+ * CancelToken来自cancel下的CancelToken.ts文件下的一个类
+ * 调用CancelToken.source（）时相当于调用其静态方法【注1】
+*/
+const CancelToken = axios.CancelToken
+const source = CancelToken.source()
+
+axios.get('/cancel/get', {
+    //作为axios的参数传入【注3】
+  cancelToken: source.token
+}).catch(function (e) {
+  if (axios.isCancel(e)) {
+    console.log('Request canceled', e.message)
+  }
+})
+
+setTimeout(() => {
+  //get('/cancel/get')中断发送
+  source.cancel('Operation canceled by the user.')
+
+    //因为此post请求和上一个get请求使用的同一个cancelToken
+    //按照设计上一个canceltoken被使用后，使用此token下一个请求将不会发出【注5】,参考额外逻辑
+  axios.post('/cancel/post', { a: 1 }, { cancelToken: source.token }).catch(function (e) {
+    if (axios.isCancel(e)) {
+      console.log(e.message)
+    }
+  })
+}, 100)
+
+let cancel: Canceler
+
+axios.get('/cancel/get', {
+  cancelToken: new CancelToken(c => {
+    cancel = c
+  })
+}).catch(function (e) {
+  if (axios.isCancel(e)) {
+    console.log('Request canceled')
+  }
+})
+
+setTimeout(() => {
+  cancel()
+}, 200)
+
+```
+
+- src/cancel/CancelToken.ts
+
+``` typescript
+import { CancelExecutor, CancelTokenSource, Canceler } from '../types'
+import Cancel from './Cancel'
+
+interface ResolvePromise {
+  (reason?: Cancel): void
+}
+
+export default class CancelToken {
+  promise: Promise<Cancel>
+  reason?: Cancel
+
+  constructor(executor: CancelExecutor) {
+    let resolvePromise: ResolvePromise
+    this.promise = new Promise<Cancel>(resolve => {
+      resolvePromise = (resolve as ResolvePromise)
+    })
+
+    executor(message => {
+      if (this.reason) {
+        return
+      }
+      this.reason = new Cancel(message)
+        //resolvePromise指向实例里的resolve方法
+        //【注4】此时promise被resolve输出并带着报错信息
+      resolvePromise(this.reason)
+    })
+  }
+//【注6】如果此canceltoken实例给使用过了，则this.reason
+//会变成一个new Cancel实例,则直接报错
+ throwIfRequested(): void {
+    if (this.reason) {
+      throw this.reason
+    }
+  }
+  static source(): CancelTokenSource {
+    let cancel!: Canceler
+    /*这里的cancel等于一个函数
+     * let cancel = funciton(message){ if(resson)...}【注1】
+     *token相当于一个CancelToken实例，实例是一个pending状态下的promise【注2】
+     * cancel可以让实例里的promise直接reject掉，并抛出错误信息
+     * */
+    const token = new CancelToken(c => {
+      cancel = c
+    })
+    return {
+      cancel,
+      token
+    }
+  }
+}
+
+```
+
+- types/index.ts
+
+``` typescript
+...
+//【注2】
+export interface CancelToken {
+  promise: Promise<Cancel>
+  reason?: Cancel
+
+  throwIfRequested():void
+}
+
+export interface Canceler {
+  (message?: string): void
+}
+
+export interface CancelExecutor {
+  (cancel: Canceler): void
+}
+
+export interface CancelTokenSource {
+  token: CancelToken
+  cancel: Canceler
+}
+
+export interface CancelTokenStatic {
+  new(executor: CancelExecutor): CancelToken
+
+  source(): CancelTokenSource
+}
+
+export interface Cancel {
+  message?: string
+}
+
+export interface CancelStatic {
+  new(message?: string): Cancel
+}
+
+```
+
+- xhr.ts
+
+``` typescript
+const { data = null, url, method = 'get', headers, responseType,timeout,cancelToken } = config
+... 
+//【注3】这里如果resolve由CancelToken的静态方法source.cancel调用【注4】
+if (cancelToken) {
+      cancelToken.promise.then(reason => {
+        request.abort()
+        // 此时直接报错，不发送请求
+        reject(reason)
+      })
+    }
+
+    request.send(data)
+...
+```
+
+## 第二种方法调用
+
+``` typescript
+let cancel: Canceler
+
+axios.get('/cancel/get', {
+    //其实就是直接把实例里的source.cancel方法拿出来了赋值给全局
+    //参考【注2】
+  cancelToken: new CancelToken(c => {
+    cancel = c
+  })
+}).catch(function (e) {
+  if (axios.isCancel(e)) {
+    console.log('Request canceled')
+  }
+})
+
+setTimeout(() => {
+  cancel()
+}, 200)
+
+```
+
+## 为什么要使用异步分离
+
+请求的发送是一个异步过程，最终会执行 `xhr.send` 方法，`xhr` 对象提供了 [`abort`](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/abort) 方法，可以把请求取消。因为我们在外部是碰不到 `xhr` 对象的，所以我们想在执行 `cancel` 的时候，去执行 `xhr.abort` 方法。
+
+## 其他代码
+
+- src/axios.ts
+
+``` typescript
+...
+import CancelToken from './cancel/CancelToken'
+import Cancel, { isCancel } from './cancel/Cancel'
+
+...
+axios.CancelToken = CancelToken
+axios.Cancel = Cancel
+axios.isCancel = isCancel
+
+
+export default axios
+
+```
+
+- types/index
+
+``` typescript
+
+export interface AxiosStatic extends AxiosInstance {
+  create(config?: AxiosRequestConfig): AxiosInstance
+  CancelToken: CancelTokenStatic
+  Cancel: CancelStatic
+  isCancel: (value: any) => boolean
+
+}
+```
+
+
+
+## 额外逻辑
+
+- dispatchRequest.ts
+
+``` typescript
+...
+export default function dispatchRequest(config: AxiosRequestConfig): AxiosPromise {
+  throwIfCancellationRequested(config)
+    processConfig(config)
+    return xhr(config).then(res => {
+      return transformResponseData(res)
+    })
+  }
+function throwIfCancellationRequested(config: AxiosRequestConfig): void {
+  if (config.cancelToken) {
+      //【注6】
+    config.cancelToken.throwIfRequested()
+  }
+}
+```
+
+# withCredentials
+
+## 需求
+
+在同域的情况下，我们发送请求会默认携带当前域下的 cookie，但是在跨域的情况下，默认是不会携带请求域下的 cookie 的，比如 `http://domain-a.com` 站点发送一个 `http://api.domain-b.com/get` 的请求，默认是不会携带 `api.domain-b.com` 域下的 cookie，如果我们想携带（很多情况下是需要的），只需要设置请求的 `xhr` 对象的 `withCredentials` 为 true 即可。
+
+- types/index.ts
+
+``` typescript
+export interface AxiosRequestConfig {
+  // ...
+  withCredentials?: boolean
+}
+```
+
+- core/xhr.ts
+
+```typescript
+const { /*...*/ withCredentials } = config
+...
+if (timeout) {
+      request.timeout = timeout
+    }
+if (withCredentials) {
+  request.withCredentials = true
+}
+...
+```
+
+## 编写demo
+
+server.js
+
+``` typescript
+...
+require('./server2')
+...
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({ extended: true }))
+app.use(cookieParser())
+```
+
+# XSRF 防御
+
+## 需求分析
+
+CSRF 的防御手段有很多，比如验证请求的 referer，但是 referer 也是可以伪造的，所以杜绝此类攻击的一种方式是服务器端要求每次请求都包含一个 `token`，这个 `token` 不在前端生成，而是在我们每次访问站点的时候生成，并通过 `set-cookie` 的方式种到客户端，然后客户端发送请求的时候，从 `cookie` 中对应的字段读取出 `token`，然后添加到请求 `headers` 中。这样服务端就可以从请求 `headers` 中读取这个 `token` 并验证，由于这个 `token` 是很难伪造的，所以就能区分这个请求是否是用户正常发起的。
+
+对于我们的 `ts-axios` 库，我们要自动把这几件事做了，每次发送请求的时候，从 `cookie` 中读取对应的 `token` 值，然后添加到请求 `headers`中。我们允许用户配置 `xsrfCookieName` 和 `xsrfHeaderName`，其中 `xsrfCookieName` 表示存储 `token` 的 `cookie` 名称，`xsrfHeaderName` 表示请求 `headers` 中 `token` 对应的 `header` 名称。
+
+```typescript
+axios.get('/more/get',{
+  xsrfCookieName: 'XSRF-TOKEN', // default
+  xsrfHeaderName: 'X-XSRF-TOKEN' // default
+}).then(res => {
+  console.log(res)
+})
+```
+
+## 逻辑
+
+- 首先判断如果是配置 `withCredentials` 为 `true` 或者是同域请求，我们才会请求 `headers` 添加 `xsrf` 相关的字段。
+- 如果判断成功，尝试从 cookie 中读取 `xsrf` 的 `token` 值。
+- 如果能读到，则把它添加到请求 `headers` 的 `xsrf` 相关字段中
+
+## 代码
+
+- types/index.ts
+
+``` typescript
+export interface AxiosRequestConfig {
+...
+  xsrfCookieName?: string
+  xsrfHeaderName?: string
+...
+}
+```
+
+- defaults.ts
+
+``` typescript
+const defaults: AxiosRequestConfig = {
+ ...
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN',
+ ...
+}
+```
+
+- helpers/url.ts
+
+``` typescript
+interface URLOrigin {
+  protocol: string
+  host: string
+}
+
+/*同域名的判断主要利用了一个技巧，创建一个 a 标签的 DOM，
+ * 然后设置 href 属性为我们传入的 url，然后可以获取该 DOM 的 protocol、host。
+ * 当前页面的 url 和请求的 url 都通过这种方式获取，然后对比它们的 protocol 和 host 是否相同即可。
+ * */
+export function isURLSameOrigin(requestURL: string): boolean {
+  const parsedOrigin = resolveURL(requestURL)
+  return (
+    parsedOrigin.protocol === currentOrigin.protocol && parsedOrigin.host === currentOrigin.host
+  )
+}
+
+const urlParsingNode = document.createElement('a')
+const currentOrigin = resolveURL(window.location.href)
+
+function resolveURL(url: string): URLOrigin {
+  urlParsingNode.setAttribute('href', url)
+  const { protocol, host } = urlParsingNode
+
+  return {
+    protocol,
+    host
+  }
+}
+```
+
+- helpers/cookie.ts
+
+```typescript
+const cookie = {
+  read(name: string): string | null {
+    const match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'))
+    return match ? decodeURIComponent(match[3]) : null
+  }
+}
+
+export default cookie
+```
+
+- core/xhr.ts
+
+```typescript
+const {
+  /*...*/
+  xsrfCookieName,
+  xsrfHeaderName
+} = config
+
+if ((withCredentials || isURLSameOrigin(url!)) && xsrfCookieName){
+  const xsrfValue = cookie.read(xsrfCookieName)
+  if (xsrfValue) {
+    headers[xsrfHeaderName!] = xsrfValue
+  }
+}
+```
+
+## 编写demo
+
+# 上传和下载进度
+
+其他参考文档
+
+记得安装nprogress,css-loader,style-loader,connect-multiparty
+
+还要在exmples下创建upload-file存储上传的图片
+
+- more/app.ts
+
+``` typescript
+import 'nprogress/nprogress.css'
+import NProgress from 'nprogress'
+...
+```
+
+
+
+- xhr.ts
+
+``` typescript
+...
+import { isFormData } from '../helpers/util'
+...
+```
+
+- server.js
+
+``` typescript
+...
+const path = require('path')
+...
+```
+
+- webpack.config.js
+
+``` javascript
+...
+{
+        test: /\.tsx?$/,
+        use: [
+          {
+            loader: 'ts-loader',
+            options: {
+              transpileOnly: true
+            }
+          }
+        ]
+      },
+      {
+        test: /\.css$/,
+        use: [
+          'style-loader','css-loader'
+        ]
+      }
+...
+```
+

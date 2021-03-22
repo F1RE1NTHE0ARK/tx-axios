@@ -1,15 +1,31 @@
 const express = require('express')
 const bodyParser = require('body-parser')
+const cookieParser = require('cookie-parser')
 const webpack = require('webpack')
 const webpackDevMiddleware = require('webpack-dev-middleware')
 const webpackHotMiddleware = require('webpack-hot-middleware')
 const WebpackConfig = require('./webpack.config')
+const multipart = require('connect-multiparty')
+const path = require('path')
+
+require('./server2')
 
 const app = express()
 const compiler = webpack(WebpackConfig)
 
 const router = express.Router()
 
+router.get('/cancel/get', function (req, res) {
+  setTimeout(() => {
+    res.json('hello')
+  }, 1000)
+})
+
+router.post('/cancel/post', function (req, res) {
+  setTimeout(() => {
+    res.json(req.body)
+  }, 1000)
+})
 router.get('/error/get', function(req, res) {
   if (Math.random() > 0.5) {
     res.json({
@@ -92,8 +108,24 @@ router.get('/interceptor/get',function(req,res){
 router.post('/config/post',function(req,res){
   res.json(req.body)
 })
+router.get('/more/get', function (req, res) {
+  res.json(req.cookies)
+})
 
 
+app.use(multipart({
+  uploadDir: path.resolve(__dirname, 'upload-file')
+}))
+
+router.post('/more/upload', function (req, res) {
+  console.log(req.body, req.files)
+  res.end('upload success!')
+})
+app.use(express.static(__dirname, {
+  setHeaders(res) {
+    res.cookie('XSRF-TOKEN-D', '1234abc')
+  }
+}))
 app.use(webpackDevMiddleware(compiler, {
   publicPath: '/__build__/',
   stats: {
@@ -108,6 +140,7 @@ app.use(express.static(__dirname))
 
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
+app.use(cookieParser())
 app.use(router)
 const port = process.env.PORT || 8080
 module.exports = app.listen(port, () => {

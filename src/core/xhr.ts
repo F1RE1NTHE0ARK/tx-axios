@@ -1,10 +1,16 @@
 import { AxiosRequestConfig , AxiosPromise,AxiosResponse} from '../types'
 import {parseHeaders, processHeaders} from '../helpers/headers'
-import {createError} from '../helpers/error'
+import { createError } from '../helpers/error'
+import { isURLSameOrigin } from '../helpers/url'
+import cookie from '../helpers/cookies'
+import { isFormData } from '../helpers/util'
+
 // 返回resolve值是AxiosResponse类型的Promise对象，
 export default function xhr(config: AxiosRequestConfig): AxiosPromise {
   return new Promise((resolve,reject) => {
-    const { data = null, url, method = 'get', headers, responseType,timeout } = config
+    const { data = null, url, method = 'get', headers, responseType, timeout, cancelToken, withCredentials, xsrfCookieName,
+      xsrfHeaderName, onDownloadProgress,
+      onUploadProgress} = config
 
     const request = new XMLHttpRequest()
 
@@ -12,12 +18,23 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
     if (responseType) {
       request.responseType = responseType
     }
+    if (onDownloadProgress) {
+      request.onprogress = onDownloadProgress
+    }
 
+    if (onUploadProgress) {
+      request.upload.onprogress = onUploadProgress
+    }
+    if (isFormData(data)) {
+      delete headers['Content-Type']
+    }
     // 超时默认时间是0，永不超时
     if (timeout) {
       request.timeout = timeout
     }
-    
+    if (withCredentials) {
+      request.withCredentials = true
+    }
     // ontimeout内置事件
     request.ontimeout = function handleTimeout() {
       reject(createError(
@@ -26,6 +43,14 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
         'ECONNABORTED',
         request
       ))
+    }
+
+
+    if ((withCredentials || isURLSameOrigin(url!)) && xsrfCookieName) {
+      const xsrfValue = cookie.read(xsrfCookieName)
+      if (xsrfValue) {
+        headers[xsrfHeaderName!] = xsrfValue
+      }
     }
     // 同样这里url也是可以确保有的所以加了类型断言
     request.open(method.toUpperCase(), url!, true)
@@ -79,6 +104,12 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
       }
     })
 
+    if (cancelToken) {
+      cancelToken.promise.then(reason => {
+        request.abort()
+        reject(reason)
+      })
+    }
     request.send(data)
 
     function handleResponse(response: AxiosResponse) {

@@ -36,8 +36,15 @@ function transformResponseData(res: AxiosResponse): AxiosResponse {
 }
 // 改了个名字，没别的意义，只是为了模块化编程
 export default function dispatchRequest(config: AxiosRequestConfig): AxiosPromise {
+  throwIfCancellationRequested(config)
     processConfig(config)
     return xhr(config).then(res => {
       return transformResponseData(res)
     })
   }
+
+function throwIfCancellationRequested(config: AxiosRequestConfig): void {
+  if (config.cancelToken) {
+    config.cancelToken.throwIfRequested()
+  }
+}
