@@ -10,9 +10,9 @@ export function isDate (val: any): val is Date {
 export function isURLSearchParams(val: any): val is URLSearchParams {
   return typeof val !== 'undefined' && val instanceof URLSearchParams
 }
-export function isObject (val: any): val is Object {
+/*export function isObject (val: any): val is Object {
   return val !== null && typeof val === 'object'
-}
+}*/
 
 // 普通对象
 export function isPlainObject (val: any): val is Object {

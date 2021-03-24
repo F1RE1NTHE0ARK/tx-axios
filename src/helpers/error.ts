@@ -16,6 +16,7 @@ export class AxiosError extends Error {
     response?: AxiosResponse
   ) {
     //   继承Error的message
+    // 这个会造成降覆盖率
     super(message)
 
     this.config = config

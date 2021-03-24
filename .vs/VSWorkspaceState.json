@@ -2,12 +2,9 @@
   "ExpandedNodes": [
     "",
     "\\examples",
-    "\\examples\\more",
-    "\\src",
-    "\\src\\core",
-    "\\src\\helpers",
-    "\\src\\types"
+    "\\examples\\cancel",
+    "\\test"
   ],
-  "SelectedNode": "\\examples\\server.js",
+  "SelectedNode": "\\examples\\cancel\\app.ts",
   "PreviewInSolutionExplorer": false
 }

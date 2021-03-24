@@ -39,7 +39,6 @@ axios.all = function all(promises) {
 
 axios.spread = function spread(callback) {
   return function wrap(arr) {
-    console.log('???',arr)
     return callback.apply(null, arr)
   }
 }

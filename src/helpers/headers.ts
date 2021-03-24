@@ -1,4 +1,5 @@
-import { isPlainObject ,deepMerge} from './util'
+import { isPlainObject, deepMerge } from './util'
+import { Method } from '../types'
 // 对content-type字符串进行大小写转换，规范化
 function normalizeHeaderName (headers: any, normalizedName: string): void {
     // 如果没有headers，什么都不做
@@ -31,24 +32,18 @@ export function processHeaders (headers: any, data: any): any {
 
 // 把字符串的headers都变成对象
 export function parseHeaders(headers: string): any {
-  // parsed是个空对象
   let parsed = Object.create(null)
-  // 如果headers是空的
   if (!headers) {
-    // 直接返回对象
     return parsed
   }
-  // 因为headers里所有键值对都是回车分割的
+
   headers.split('\r\n').forEach(line => {
-    let [key, val] = line.split(':')
+    let [key, ...vals] = line.split(':')
     key = key.trim().toLowerCase()
     if (!key) {
-      // 这里return还是跳到下个循环
       return
     }
-    if (val) {
-      val = val.trim()
-    }
+    let val = vals.join(':').trim()
     parsed[key] = val
   })
 
