@@ -2303,3 +2303,423 @@ const path = require('path')
 ...
 ```
 
+# http授权
+
+## 需求
+
+axios 库也允许你在请求配置中配置 `auth` 属性，`auth` 是一个对象结构，包含 `username` 和 `password` 2 个属性。一旦用户在请求的时候配置这俩属性，我们就会自动往 HTTP 的 请求 header 中添加 `Authorization` 属性，它的值为 `Basic 加密串`。 这里的加密串是 `username:password` base64 加密后的结果。
+
+``` typescript
+axios.post('/more/post', {
+  a: 1
+}, {
+  auth: {
+    username: 'Yee',
+    password: '123456'
+  }
+}).then(res => {
+  console.log(res)
+})
+```
+
+## 实现
+
+- types/index.ts
+
+```typescript
+export interface AxiosRequestConfig {
+  // ...
+  auth?: AxiosBasicCredentials
+}
+
+export interface AxiosBasicCredentials {
+  username: string
+  password: string
+}
+```
+
+- core/mergeConfig.ts：
+
+```typescript
+//auth使用对象合并规则
+const stratKeysDeepMerge = ['headers', 'auth']
+```
+
+- core/xhr.t：
+
+```typescript
+const {
+  /*...*/
+  auth
+} = config
+
+if (auth) {
+//btoa() 方法用于创建一个 base-64 编码的字符串。
+//该方法使用 "A-Z", "a-z", "0-9", "+", "/" 和 "=" 字符来编码字符串。
+//base-64 解码使用方法是 atob() 。
+  headers['Authorization'] = 'Basic ' + btoa(auth.username + ':' + auth.password)
+}
+```
+
+## demo
+
+记得安装atob
+
+> npm i atob
+
+server.js中引入
+
+``` typescript
+const atob = require('atob')
+```
+
+# 自定义合法状态码
+
+## 需求
+
+之前 `ts-axios` 在处理响应结果的时候，认为 HTTP [status](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/status) 在 200 和 300 之间是一个合法值，在这个区间之外则创建一个错误。有些时候我们想自定义这个规则，比如认为 304 也是一个合法的状态码，所以我们希望 `ts-axios` 能提供一个配置，
+
+## 代码
+
+- types/index
+
+```typescript
+export interface AxiosRequestConfig {
+  // ...
+  validateStatus?: (status: number) => boolean
+}
+```
+
+- defaults
+
+```typescript
+validateStatus(status: number): boolean {
+  return status >= 200 && status < 300
+}
+```
+
+- core/xhr：
+
+```typescript
+const {
+  /*...*/
+  validateStatus
+} = config
+
+function handleResponse(response: AxiosResponse): void {
+  if (!validateStatus || validateStatus(response.status)) {
+    resolve(response)
+  } else {
+    reject(
+      createError(
+        `Request failed with status code ${response.status}`,
+        config,
+        null,
+        request,
+        response
+      )
+    )
+  }
+}
+```
+
+## demo
+
+参考文档
+
+# 自定义参数序列化
+
+## 需求
+
+在之前的章节，我们对请求的 url 参数做了处理，我们会解析传入的 params 对象，根据一定的规则把它解析成字符串，然后添加在 url 后面。在解析的过程中，我们会对字符串 encode，但是对于一些特殊字符比如 `@`、`+` 等却不转义，这是 axios 库的默认解析规则。当然，我们也希望自己定义解析规则，于是我们希望 `ts-axios` 能在请求配置中允许我们配置一个 `paramsSerializer` 函数来自定义参数的解析规则，该函数接受 `params` 参数，返回值作为解析后的结果
+
+```typescript
+axios.get('/more/get', {
+  params: {
+    a: 1,
+    b: 2,
+    c: ['a', 'b', 'c']
+  },
+  paramsSerializer(params) {
+    return qs.stringify(params, { arrayFormat: 'brackets' })
+  }
+}).then(res => {
+  console.log(res)
+})
+```
+
+## 代码
+
+- types/index.ts
+
+```typescript
+export interface AxiosRequestConfig {
+  // ...
+  paramsSerializer?: (params: any) => string
+}
+```
+
+- helpers/url.ts
+
+``` typescript
+//
+	//记得在helpers/util.ts下定义isURLSearchParams
+export function isURLSearchParams(val: any): val is URLSearchParams {
+  return typeof val !== 'undefined' && val instanceof 
+      //这个类型是ts自带的
+      URLSearchParams
+}
+//
+import { isDate, isPlainObject, isURLSearchParams } from './util'
+
+export function bulidURL (url: string, params?: any,paramsSerializer?:(params:any)=>string):string {
+// 如果没有参数则直接返回原始url 
+  if (!params) {
+    return url
+  }
+  let serializedParams
+
+  if (paramsSerializer) {
+    serializedParams = paramsSerializer(params)
+  }
+  else if (isURLSearchParams(params)) {
+    serializedParams = params.toString()
+  }
+  else {
+   ...
+    serializedParams = parts.join('&')
+
+    
+  }
+  if (serializedParams) {
+   ...
+  }
+
+  return url
+}
+```
+
+## demo
+
+参考文档
+
+# baseURL
+
+有些时候，我们会请求某个域名下的多个接口，我们不希望每次发送请求都填写完整的 url，希望可以配置一个 `baseURL`，之后都可以传相对路径。如下
+
+```typescript
+const instance = axios.create({
+  baseURL: 'https://some-domain.com/api'
+})
+
+instance.get('/get') //相当于 https://some-domain.com/api/get
+
+instance.post('/post') //相当于 https://some-domain.com/api/post
+```
+
+## 代码
+
+- types/index.ts：
+
+```typescript
+export interface AxiosRequestConfig {
+  // ...
+  baseURL?: string
+}
+```
+
+- helpers/url.ts：
+
+```typescript
+//判断你是否为绝对路径
+export function isAbsoluteURL(url: string): boolean {
+  return /^([a-z][a-z\d\+\-\.]*:)?\/\//i.test(url)
+}
+
+export function combineURL(baseURL: string, relativeURL?: string): string {
+    //将baseURL最后的/去掉，把传进来的相对路径前面的/去掉，然后拼接
+  return relativeURL ? baseURL.replace(/\/+$/, '') + '/' + relativeURL.replace(/^\/+/, '') : baseURL
+}
+```
+
+- core/dispatchRequest.ts
+
+``` typescript
+function transformURL(config: AxiosRequestConfig): string {
+  let { url, params, paramsSerializer, baseURL } = config
+  if (baseURL && !isAbsoluteURL(url!)) {
+    url = combineURL(baseURL, url)
+  }
+  return buildURL(url!, params, paramsSerializer)
+}
+```
+
+## demo
+
+参考文档
+
+# 拓展其他静态方法
+
+## 需求
+
+``` typescript
+function getA() {
+  return axios.get('/more/A')
+}
+
+function getB() {
+  return axios.get('/more/B')
+}
+axios.all([getA(), getB()])
+  .then(axios.spread(function (resA, resB) {
+    console.log(resA.data)
+    console.log(resB.data)
+  }))
+```
+
+1. axios.all` 就是 `Promise.all` 的封装，它返回的是一个 `Promise` 数组，`then` 函数的参数本应是一个参数为 `Promise resolves`（数组）的函数，在这里使用了 `axios.spread` 方法。所以 `axios.spread` 方法是接收一个函数，返回一个新的函数，新函数的结构满足 `then` 函数的参数结
+
+
+
+2. 另外对于 axios 实例，官网还提供了 `getUri` 方法在不发送请求的前提下根据传入的配置返回一个 url，如下：
+
+```typescript
+const fakeConfig = {
+  baseURL: 'https://www.baidu.com/',
+  url: '/user/12345',
+  params: {
+    idClient: 1,
+    idTest: 2,
+    testString: 'thisIsATest'
+  }
+}
+console.log(axios.getUri(fakeConfig))
+// https://www.baidu.com/user/12345?idClient=1&idTest=2&testString=thisIsATest
+```
+
+3. 官方 axios 库也通过 `axios.Axios` 对外暴露了 `Axios` 类
+
+## 代码
+
+- types/index
+
+```typescript
+export interface AxiosClassStatic {
+  new (config: AxiosRequestConfig): Axios
+}
+
+export interface AxiosStatic extends AxiosInstance {
+  // ...
+
+  /*
+ * all函数接受泛型T参数，接收一个T类型的数组或是Promise<T>【即resolve(T)】的数组为参数
+ * 最后返回一个Promise<T[]>【即resolve(T[])】
+*/
+  all<T>(promises: Array<T | Promise<T>>): Promise<T[]>
+
+/*spread函数接受两个泛型参数T，R
+ * spread相当于一个高阶函数，接受一个函数参数，返回一个函数
+ * 接受一个函数参数，此函数参数接受任意多个T类型数组解构的参数【注1】
+ * 最后此函数参数返回一个R类型值
+ * spread函数最后返回一个T类型的数组参数
+ * 返回R类型的值
+ */
+  spread<T, R>(callback: (...args: T[]) => R): (arr: T[]) => R
+
+  Axios: AxiosClassStatic // 对外暴露了 `Axios` 类
+}
+
+export interface Axios {
+  // ...
+
+  getUri(config?: AxiosRequestConfig): string
+}
+```
+
+- src下axios.ts
+
+```typescript
+axios.all = function all(promises) {
+  return Promise.all(promises)
+}
+
+axios.spread = function spread(callback) {
+  return function wrap(arr) {
+    return callback.apply(null, arr)
+  }
+}
+
+axios.Axios = Axios
+```
+
+- core/Axios
+
+```typescript
+//先改造让transformURL暴露出来，然后导入
+import dispatchRequest, { transformURL } from './dispatchRequest'
+
+//其实就是将所有参数变成一个带参数的域名
+getUri(config?: AxiosRequestConfig): string {
+  config = mergeConfig(this.defaults, config)
+  return transformURL(config)
+}
+```
+
+## demo
+
+``` typescript
+function getA() {
+  return axios.get('/more/A')
+}
+
+function getB() {
+  return axios.get('/more/B')
+}
+/*这里axios.all其实就是封装了promise.all，
+ *所以axios.all.then其实就是返回了一个resolve函数
+ * 在这个例子中相当于resolve([AxiosResponse类型的对象,...])
+ * 所以根据  spread<T, R>(callback: (...args: T[]) => R): (arr: T[]) => R
+ * resolve([AxiosResponse类型的对象,...])需要满足(arr: T[]) => R
+ * 则T是AxiosResponse类型
+ * 则R是void类型
+ * arr就是axios.all后的请求结果数组
+ * 他解构后(apply接收的参数是数组形式，按顺序传给callback)传给了resA和resB
+*/
+axios.all([getA(), getB()])
+  .then(axios.spread(function (resA, resB) {
+    console.log(resA.data)
+    console.log(resB.data)
+  }))
+
+
+axios.all([getA(), getB()])
+  .then(([resA, resB]) => {
+    console.log(resA.data)
+    console.log(resB.data)
+  })
+
+const fakeConfig = {
+  baseURL: 'https://www.baidu.com/',
+  url: '/user/12345',
+  params: {
+    idClient: 1,
+    idTest: 2,
+    testString: 'thisIsATest'
+  }
+}
+console.log(axios.getUri(fakeConfig))
+```
+
+- server.js
+
+``` typescript
+router.get('/more/A', function (req, res) {
+  res.end('A')
+})
+
+router.get('/more/B', function (req, res) {
+  res.end('B')
+})
+
+```
+

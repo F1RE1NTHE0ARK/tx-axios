@@ -1,5 +1,5 @@
-import { AxiosRequestConfig, AxiosPromise, Method,AxiosResponse,ResolvedFn,RejectedFn} from '../types'
-import dispatchRequest from './dispatchRequest'
+import { AxiosRequestConfig, AxiosPromise, Method, AxiosResponse, ResolvedFn, RejectedFn } from '../types'
+import dispatchRequest, { transformURL } from './dispatchRequest'
 import InterceptorManager from './InterceptorManager'
 import mergeConfig from './mergeConfig'
 // 一个拦截器对象
@@ -33,6 +33,11 @@ export default class Axios {
       request: new InterceptorManager<AxiosRequestConfig>(),
       response: new InterceptorManager<AxiosResponse>()
     }
+  }
+
+  getUri(config?: AxiosRequestConfig): string {
+    config = mergeConfig(this.defaults, config)
+    return transformURL(config)
   }
 
   request(url: any, config?: any): AxiosPromise {

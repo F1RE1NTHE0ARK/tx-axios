@@ -1,6 +1,7 @@
 import axios from '../../src/index'
 import 'nprogress/nprogress.css'
 import NProgress from 'nprogress'
+import qs from 'qs'
 /*document.cookie = 'a=b'*/
 
 /*axios.get('/more/get').then(res => {
@@ -23,9 +24,9 @@ instance.get('/more/get').then(res => {
 })
 */
 
-const instance = axios.create()
+/*const instance = axios.create()*/
 
-function calculatePercentage(loaded: number, total: number) {
+/*function calculatePercentage(loaded: number, total: number) {
   return Math.floor(loaded * 1.0) / total
 }
 
@@ -79,4 +80,116 @@ uploadEl!.addEventListener('click', e => {
 
     instance.post('/more/upload', data)
   }
+})*/
+
+
+/*axios.post('/more/post', {
+  a: 1
+}, {
+  auth: {
+    username: 'Yee',
+    password: '123456'
+  }
+}).then(res => {
+  console.log(res)
 })
+*/
+/*axios.get('/more/304').then(res => {
+  console.log(res)
+}).catch((e: AxiosError) => {
+  console.log(e.message)
+})
+
+axios.get('/more/304', {
+  validateStatus(status) {
+    return status >= 200 && status < 400
+  }
+}).then(res => {
+  console.log(res)
+}).catch((e: AxiosError) => {
+  console.log(e.message)
+})
+*/
+/*axios.get('/more/get', {
+  params: new URLSearchParams('a=b&c=d')
+}).then(res => {
+  console.log(res)
+})
+
+axios.get('/more/get', {
+  params: {
+    a: 1,
+    b: 2,
+    c: ['a', 'b', 'c']
+  }
+}).then(res => {
+  console.log(res)
+})
+
+const instance = axios.create({
+  paramsSerializer(params) {
+    return qs.stringify(params, { arrayFormat: 'brackets' })
+  }
+})
+
+instance.get('/more/get', {
+  params: {
+    a: 1,
+    b: 2,
+    c: ['a', 'b', 'c']
+  }
+}).then(res => {
+  console.log(res)
+})
+*/
+/*
+const instance = axios.create({
+  baseURL: 'https://img.mukewang.com/'
+})
+
+instance.get('5cc01a7b0001a33718720632.jpg')
+
+instance.get('https://img.mukewang.com/szimg/5becd5ad0001b89306000338-360-202.jpg')
+*/
+
+
+function getA() {
+  return axios.get('/more/A')
+}
+
+function getB() {
+  return axios.get('/more/B')
+}
+/*这里axios.all其实就是封装了promise.all，
+ *所以axios.all.then其实就是返回了一个resolve函数
+ * 在这个例子中相当于resolve([AxiosResponse类型的对象,...])
+ * 所以根据  spread<T, R>(callback: (...args: T[]) => R): (arr: T[]) => R
+ * resolve([AxiosResponse类型的对象,...])需要满足(arr: T[]) => R
+ * 则T是AxiosResponse类型
+ * 则R是void类型
+ * arr就是axios.all后的请求结果数组
+ * 他解构后(apply接收的参数是数组形式，按顺序传给callback)传给了resA和resB
+*/
+axios.all([getA(), getB()])
+  .then(axios.spread(function (resA, resB) {
+    console.log(resA.data)
+    console.log(resB.data)
+  }))
+
+
+axios.all([getA(), getB()])
+  .then(([resA, resB]) => {
+    console.log(resA.data)
+    console.log(resB.data)
+  })
+
+const fakeConfig = {
+  baseURL: 'https://www.baidu.com/',
+  url: '/user/12345',
+  params: {
+    idClient: 1,
+    idTest: 2,
+    testString: 'thisIsATest'
+  }
+}
+console.log(axios.getUri(fakeConfig))

@@ -28,7 +28,7 @@ function deepMergeStrat(val1: any, val2: any): any {
         return val1
     }
 }
-const stratKeysDeepMerge = ['headers']
+const stratKeysDeepMerge = ['headers','auth']
 
 // 根据需求，headers配置要和传入的配置要深度合并
 stratKeysDeepMerge.forEach(key => {

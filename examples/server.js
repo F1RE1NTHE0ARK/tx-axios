@@ -7,6 +7,7 @@ const webpackHotMiddleware = require('webpack-hot-middleware')
 const WebpackConfig = require('./webpack.config')
 const multipart = require('connect-multiparty')
 const path = require('path')
+const atob = require('atob')
 
 require('./server2')
 
@@ -15,10 +16,35 @@ const compiler = webpack(WebpackConfig)
 
 const router = express.Router()
 
+router.get('/more/A', function (req, res) {
+  res.end('A')
+})
+
+router.get('/more/B', function (req, res) {
+  res.end('B')
+})
+
+router.get('/more/304', function (req, res) {
+  res.status(304)
+  res.end()
+})
+
 router.get('/cancel/get', function (req, res) {
   setTimeout(() => {
     res.json('hello')
   }, 1000)
+})
+
+router.post('/more/post', function (req, res) {
+  const auth = req.headers.authorization
+  const [type, credentials] = auth.split(' ')
+  console.log(atob(credentials))
+  const [username, password] = atob(credentials).split(':')
+  if (type === 'Basic' && username === 'Yee' && password === '123456') {
+    res.json(req.body)
+  } else {
+    res.end('UnAuthorization')
+  }
 })
 
 router.post('/cancel/post', function (req, res) {

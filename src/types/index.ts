@@ -38,6 +38,8 @@ export interface Axios {
   put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): AxiosPromise<T>
 
   patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): AxiosPromise<T>
+
+  getUri(config?: AxiosRequestConfig): string
 }
 // 定义接口，本身是一个函数，里面继承了Axios接口
 export interface AxiosInstance extends Axios {
@@ -45,6 +47,13 @@ export interface AxiosInstance extends Axios {
   (config: AxiosRequestConfig): AxiosPromise
   (url: string, config?: AxiosRequestConfig): AxiosPromise
 }
+
+
+export interface AxiosClassStatic {
+  new(config: AxiosRequestConfig): Axios
+}
+
+
 //新增了create方法
 export interface AxiosStatic extends AxiosInstance {
   create(config?: AxiosRequestConfig): AxiosInstance
@@ -52,6 +61,22 @@ export interface AxiosStatic extends AxiosInstance {
   Cancel: CancelStatic
   isCancel: (value: any) => boolean
 
+/*
+ * all函数接受泛型T参数，接收一个T类型的数组或是Promise<T>【即resolve(T)】的数组为参数
+ * 最后返回一个Promise<T[]>【即resolve(T[])】
+*/
+  all<T>(promises: Array<T | Promise<T>>): Promise<T[]>
+
+/*spread函数接受两个泛型参数T，R
+ * spread相当于一个高阶函数，接受一个函数参数，返回一个函数
+ * 接受一个函数参数，此函数参数接受任意多个T类型数组解构的参数【注1】
+ * 最后此函数参数返回一个R类型值
+ * spread函数最后返回一个T类型的数组参数
+ * 返回R类型的值
+ */
+  spread<T, R>(callback: (...args: T[]) => R): (arr: T[]) => R
+
+  Axios: AxiosClassStatic
 }
 export interface AxiosRequestConfig {
   //原来url必须穿到config里，现在可以传到get,post上（参考Axios接口）
@@ -77,6 +102,19 @@ export interface AxiosRequestConfig {
   onUploadProgress?: (e: ProgressEvent) => void
 
   [propName: string]: any
+
+  validateStatus?: (status: number) => boolean
+
+  paramsSerializer?: (params: any) => string
+
+  baseURL?: string
+
+  auth?: AxiosBasicCredentials
+}
+
+export interface AxiosBasicCredentials {
+  username: string
+  password: string
 }
 
 export interface AxiosTransformer {
@@ -169,3 +207,16 @@ export interface Cancel {
 export interface CancelStatic {
   new(message?: string): Cancel
 }
+
+/*
+ * 上面的解释说明【注1】
+ * interface fuck<T> {
+  (...args:T[]):string
+}
+
+let kk: fuck<number> = function (ww) {
+  return 'sss'
+}
+
+let hi = []
+kk(12, 24, 142)*/

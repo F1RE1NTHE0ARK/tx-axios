@@ -7,7 +7,9 @@ export function isDate (val: any): val is Date {
     // typeof 不能准确判断一个对象变量，null 的结果也是 object，数组的结果也是 object，
   return toString.call(val) === '[object Date]'
 }
-
+export function isURLSearchParams(val: any): val is URLSearchParams {
+  return typeof val !== 'undefined' && val instanceof URLSearchParams
+}
 export function isObject (val: any): val is Object {
   return val !== null && typeof val === 'object'
 }

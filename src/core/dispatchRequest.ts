@@ -1,6 +1,6 @@
 import { AxiosPromise, AxiosRequestConfig, AxiosResponse } from '../types'
 import xhr from './xhr'
-import { bulidURL } from '../helpers/url'
+import { bulidURL, isAbsoluteURL, combineURL } from '../helpers/url'
 import { processHeaders,flattenHeaders } from '../helpers/headers'
 import  transform from './transform'
 
@@ -12,11 +12,16 @@ function processConfig(config: AxiosRequestConfig): void {
   config.headers = flattenHeaders(config.headers,config.method)
 }
 
-function transformURL(config: AxiosRequestConfig): string {
-  const { url, params } = config
-//   严格模式下url可能为undefined类型(AxiosRequestConfig里url是可选属性)
+
+export  function transformURL(config: AxiosRequestConfig): string {
+
+  let { url, params, paramsSerializer, baseURL } = config
+  if (baseURL && !isAbsoluteURL(url!)) {
+    url = combineURL(baseURL, url)
+  }
+  //   严格模式下url可能为undefined类型(AxiosRequestConfig里url是可选属性)
 // 在这里我们可以确认url是肯定有的，所以用了类型断言，确保url不为空
-  return bulidURL(url!, params)
+  return bulidURL(url!, params, paramsSerializer)
 }
 
 //这个逻辑用不到了

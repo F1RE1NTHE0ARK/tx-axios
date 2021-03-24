@@ -10,10 +10,12 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
   return new Promise((resolve,reject) => {
     const { data = null, url, method = 'get', headers, responseType, timeout, cancelToken, withCredentials, xsrfCookieName,
       xsrfHeaderName, onDownloadProgress,
-      onUploadProgress} = config
+      onUploadProgress, auth, validateStatus} = config
 
     const request = new XMLHttpRequest()
-
+    if (auth) {
+      headers['Authorization'] = 'Basic ' + btoa(auth.username + ':' + auth.password)
+    }
     // 获取服务器返回值
     if (responseType) {
       request.responseType = responseType
@@ -112,11 +114,19 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
     }
     request.send(data)
 
-    function handleResponse(response: AxiosResponse) {
-      if (response.status >= 200 && response.status < 300) {
+    function handleResponse(response: AxiosResponse): void {
+      if (!validateStatus || validateStatus(response.status)) {
         resolve(response)
       } else {
-        reject(new Error(`Request failed with status code ${response.status}`))
+        reject(
+          createError(
+            `Request failed with status code ${response.status}`,
+            config,
+            null,
+            request,
+            response
+          )
+        )
       }
     }
   })
