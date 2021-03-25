@@ -9,7 +9,7 @@ function processConfig(config: AxiosRequestConfig): void {
   config.url = transformURL(config)
   config.data = transform(config.data, config.headers, config.transformRequest)
   // 将传入的配置传入拉平
-  config.headers = flattenHeaders(config.headers,config.method)
+  config.headers = flattenHeaders(config.headers,config.method!)
 }
 
 
@@ -43,9 +43,17 @@ function transformResponseData(res: AxiosResponse): AxiosResponse {
 export default function dispatchRequest(config: AxiosRequestConfig): AxiosPromise {
   throwIfCancellationRequested(config)
     processConfig(config)
-    return xhr(config).then(res => {
+    return xhr(config).then(
+    res => {
       return transformResponseData(res)
-    })
+    },
+    e => {
+      if (e && e.response) {
+        e.response = transformResponseData(e.response)
+      }
+      return Promise.reject(e)
+    }
+  )
   }
 
 function throwIfCancellationRequested(config: AxiosRequestConfig): void {

@@ -50,6 +50,7 @@ export default class Axios {
       config = url
     }
     config = mergeConfig(this.defaults, config)
+    config.method = config.method.toLowerCase()
     // 链式调用
     // 有一个发送请求的初始值
     const chain: PromiseChain<any>[] = [{
