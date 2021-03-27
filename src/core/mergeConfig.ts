@@ -17,16 +17,15 @@ function fromVal2Strat(val1: any, val2: any): any {
 // 深度合并
 function deepMergeStrat(val1: any, val2: any): any {
     // 如果val2是对象
-    if (isPlainObject(val2)) {
-        return deepMerge(val1, val2)
-    } else if (typeof val2 !== 'undefined') {
-        return val2
-        // 如果val2为空，val为对象
-    } else if (isPlainObject(val1)) {
-        return deepMerge(val1)
-    } else if (typeof val1 !== 'undefined') {
-        return val1
-    }
+  if (isPlainObject(val2)) {
+    return deepMerge(val1, val2)
+  } else if (typeof val2 !== 'undefined') {
+    return val2
+  } else if (isPlainObject(val1)) {
+    return deepMerge(val1)
+  } else {
+    return val1
+  }
 }
 const stratKeysDeepMerge = ['headers','auth']
 

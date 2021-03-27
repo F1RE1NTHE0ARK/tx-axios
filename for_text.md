@@ -83,6 +83,8 @@ test('the data is peanut butter', done => {
 	fetchData(callback);
 });
 
+//done.fail 表示了一个异常的结束，这个并未在 Jest 文档中体现，但它是一个可以用的 API。
+
 ```
 
 

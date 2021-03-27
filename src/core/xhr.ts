@@ -8,7 +8,7 @@ import { isFormData } from '../helpers/util'
 // 返回resolve值是AxiosResponse类型的Promise对象，
 export default function xhr(config: AxiosRequestConfig): AxiosPromise {
   return new Promise((resolve,reject) => {
-    const { data = null, url, method = 'get', headers, responseType, timeout, cancelToken, withCredentials, xsrfCookieName,
+    const { data = null, url, method, headers = {}, responseType, timeout, cancelToken, withCredentials, xsrfCookieName,
       xsrfHeaderName, onDownloadProgress,
       onUploadProgress, auth, validateStatus} = config
 
@@ -55,7 +55,7 @@ export default function xhr(config: AxiosRequestConfig): AxiosPromise {
       }
     }
     // 同样这里url也是可以确保有的所以加了类型断言
-    request.open(method.toUpperCase(), url!, true)
+    request.open(method!.toUpperCase(), url!, true)
 
     // 请求状态变化监听器
     request.onreadystatechange = function handleLoad() {
